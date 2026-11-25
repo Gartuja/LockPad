@@ -137,6 +137,27 @@ const pt = {
   uninstallCheck:
     "Confirmo que todas as notas, imagens, vídeos e pastas criptografadas serão apagadas permanentemente junto com o aplicativo.",
   uninstallConfirmBtn: "Apagar e Desinstalar",
+
+  // First-Run Security Onboarding
+  onboardingTitle: "AVISO CRÍTICO DE SEGURANÇA — LOCKPAD",
+  onboardingSubtitle: "Leia com atenção antes de começar a usar o aplicativo",
+  onboardingLangLabel: "Escolha o idioma / Choose language / Elige idioma",
+  onboardingFeaturesTitle: "Camadas de Segurança Ativas no LockPad:",
+  onboardingFeat1: "Criptografia Argon2id (64 MiB) + XChaCha20-Poly1305 em cada nota, imagem, vídeo e pasta.",
+  onboardingFeat2: "Reprodução de imagens e vídeos diretamente na memória RAM, sem gravar arquivos temporários no disco.",
+  onboardingFeat3: "Proteção Anti-Captura de Tela (WDA_EXCLUDEFROMCAPTURE) e limpeza automática de chaves da RAM.",
+  onboardingLockWarnTitle: "Atenção: Trava de Desinstalação e Exclusão",
+  onboardingLockWarnBody:
+    "Depois que você ativar o cofre e guardar dados nele, o aplicativo NÃO pode ser desinstalado nem excluído sem digitar sua frase-chave (ou a chave de recuperação abaixo) e confirmar a destruição dos dados.",
+  onboardingRecoveryTitle: "Sua Chave Mestra de Recuperação (24 caracteres)",
+  onboardingRecoveryExplain:
+    "Copie e salve esta chave aleatória em outro local seguro (papel, pendrive ou gerenciador de senhas). Caso você esqueça sua senha e precise desinstalar, recuperar ou mexer no aplicativo, esta chave será sua única salvaguarda!",
+  onboardingGenNew: "Gerar Nova Chave",
+  onboardingCopyKey: "Copiar Chave",
+  onboardingCopied: "Chave copiada!",
+  onboardingConfirmCheck:
+    "Confirmo que salvei minha chave de recuperação de 24 caracteres em outro local seguro e entendi as regras de segurança.",
+  onboardingEnterBtn: "Confirmar e Começar a Usar",
 };
 
 export type I18nStrings = typeof pt;
@@ -268,6 +289,26 @@ const en: I18nStrings = {
   uninstallCheck:
     "I confirm all encrypted notes, images, videos, and folders will be permanently erased along with the app.",
   uninstallConfirmBtn: "Erase and Uninstall",
+
+  onboardingTitle: "CRITICAL SECURITY NOTICE — LOCKPAD",
+  onboardingSubtitle: "Read carefully before you start using the application",
+  onboardingLangLabel: "Choose language / Idioma / Elige idioma",
+  onboardingFeaturesTitle: "Active LockPad Security Layers:",
+  onboardingFeat1: "Argon2id (64 MiB) + XChaCha20-Poly1305 encryption on every note, image, video, and folder.",
+  onboardingFeat2: "Images and videos stream directly in RAM without writing decrypted temporary files to disk.",
+  onboardingFeat3: "Screen-Capture Protection (WDA_EXCLUDEFROMCAPTURE) and automatic RAM key zeroization.",
+  onboardingLockWarnTitle: "Warning: Uninstall & Deletion Lock",
+  onboardingLockWarnBody:
+    "Once you activate the vault and store data inside it, the application CANNOT be uninstalled or deleted without entering your passphrase (or the recovery key below) and confirming data destruction.",
+  onboardingRecoveryTitle: "Your 24-Character Master Recovery Key",
+  onboardingRecoveryExplain:
+    "Copy and save this random key somewhere safe outside this computer (paper, USB drive, or password manager). If you forget your password and need to uninstall, recover, or manage the app, this key is your only safeguard!",
+  onboardingGenNew: "Generate New Key",
+  onboardingCopyKey: "Copy Key",
+  onboardingCopied: "Key copied!",
+  onboardingConfirmCheck:
+    "I confirm I saved my 24-character recovery key in another safe location and understood the security rules.",
+  onboardingEnterBtn: "Confirm and Start Using LockPad",
 };
 
 const es: I18nStrings = {
@@ -397,6 +438,26 @@ const es: I18nStrings = {
   uninstallCheck:
     "Confirmo que todas las notas, imágenes, videos y carpetas cifradas se borrarán permanentemente junto con la aplicación.",
   uninstallConfirmBtn: "Borrar y Desinstalar",
+
+  onboardingTitle: "AVISO CRÍTICO DE SEGURIDAD — LOCKPAD",
+  onboardingSubtitle: "Lee atentamente antes de comenzar a usar la aplicación",
+  onboardingLangLabel: "Elige idioma / Choose language / Idioma",
+  onboardingFeaturesTitle: "Capas de Seguridad Activas en LockPad:",
+  onboardingFeat1: "Cifrado Argon2id (64 MiB) + XChaCha20-Poly1305 en cada nota, imagen, video y carpeta.",
+  onboardingFeat2: "Reproducción de imágenes y videos directamente en memoria RAM, sin archivos temporales en disco.",
+  onboardingFeat3: "Protección Anti-Captura de Pantalla (WDA_EXCLUDEFROMCAPTURE) y limpieza de claves en RAM.",
+  onboardingLockWarnTitle: "Atención: Bloqueo de Desinstalación y Borrado",
+  onboardingLockWarnBody:
+    "Una vez que actives la bóveda y guardes datos en ella, la aplicación NO puede desinstalarse ni eliminarse sin ingresar tu frase clave (o la clave de recuperación) y confirmar el borrado.",
+  onboardingRecoveryTitle: "Tu Clave Maestra de Recuperación (24 caracteres)",
+  onboardingRecoveryExplain:
+    "Guarda esta clave aleatoria en otro lugar seguro (papel, USB o gestor de contraseñas). Si olvidas tu contraseña y necesitas desinstalar, recuperar o modificar la aplicación, ¡esta clave será tu única salvaguarda!",
+  onboardingGenNew: "Generar Nueva Clave",
+  onboardingCopyKey: "Copiar Clave",
+  onboardingCopied: "¡Clave copiada!",
+  onboardingConfirmCheck:
+    "Confirmo que guardé mi clave de recuperación de 24 caracteres en otro lugar seguro y entendí las reglas de seguridad.",
+  onboardingEnterBtn: "Confirmar y Empezar a Usar",
 };
 
 const DICT: Record<Language, I18nStrings> = { pt, en, es };

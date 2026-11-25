@@ -41,6 +41,7 @@ export interface AppPreferences {
   screen_protect: boolean;
   stealth_trigger_enabled: boolean;
   protect_public_notes_on_wipe: boolean;
+  onboarding_completed?: boolean;
 }
 
 export interface PublicStore {

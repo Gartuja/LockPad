@@ -15,6 +15,9 @@ export const api = {
   savePreferences: (preferences: AppPreferences) =>
     invoke<void>("save_preferences", { preferences }),
   getVaultStatus: () => invoke<VaultStatus>("get_vault_status"),
+  generateRecoveryKey: () => invoke<string>("generate_recovery_key"),
+  completeOnboarding: (recoveryKey: string, language: string) =>
+    invoke<PublicStore>("complete_onboarding", { recoveryKey, language }),
   setupVault: (passphrase: string) => invoke<VaultStatus>("setup_vault", { passphrase }),
   tryUnlockVault: (passphrase: string) =>
     invoke<boolean>("try_unlock_vault", { passphrase }),

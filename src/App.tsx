@@ -32,6 +32,7 @@ import { VaultFilesSection } from "./components/VaultFilesSection";
 import { SettingsModal } from "./components/SettingsModal";
 import { UninstallGate } from "./components/UninstallGate";
 import { PopoutNoteView } from "./components/PopoutNoteView";
+import { OnboardingScreen } from "./components/OnboardingScreen";
 
 const DEFAULT_PREFS: AppPreferences = {
   theme: "dark",
@@ -92,7 +93,8 @@ export const App: React.FC = () => {
   const [quickUnlockError, setQuickUnlockError] = useState<string | null>(null);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [detachedIds, setDetachedIds] = useState<string[]>([]);
-  const [appVersion, setAppVersion] = useState("1.8.0");
+  const [appVersion, setAppVersion] = useState("1.9.0");
+  const [storeLoaded, setStoreLoaded] = useState(false);
   const [banner, setBanner] = useState<{ text: string; isError?: boolean } | null>(null);
   const t = getStrings(preferences.language);
 
@@ -147,6 +149,7 @@ export const App: React.FC = () => {
       ]);
       setPublicNotes(store.notes);
       setPreferences(store.preferences);
+      setStoreLoaded(true);
       setVaultStatus(st);
       if (st.unlocked) {
         const m = await api.getVaultManifest();
@@ -346,11 +349,25 @@ export const App: React.FC = () => {
     );
   }
 
-  if (uninstallGate === null) {
+  if (uninstallGate === null || !storeLoaded) {
     return null;
   }
   if (uninstallGate) {
     return <UninstallGate />;
+  }
+  if (!preferences.onboarding_completed) {
+    return (
+      <OnboardingScreen
+        initialLanguage={preferences.language ?? "pt"}
+        onLanguageChange={(lang) =>
+          setPreferences((prev) => ({ ...prev, language: lang }))
+        }
+        onCompleted={(store) => {
+          setPublicNotes(store.notes);
+          setPreferences(store.preferences);
+        }}
+      />
+    );
   }
 
   const updateNote = (updated: StickyNote) => {

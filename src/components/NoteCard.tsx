@@ -3,7 +3,13 @@ import { createPortal } from "react-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Check, ExternalLink, GripVertical, Image as ImageIcon, ListTodo, Palette, Pin, Plus, Trash2, Type, X } from "lucide-react";
 import { getStrings } from "../i18n";
-import { htmlToPlainText, sanitizeNoteHtml } from "../utils/richText";
+import {
+  htmlToPlainText,
+  queryFormatState,
+  sanitizeNoteHtml,
+  toggleEditorFormat,
+  type FormatCmd,
+} from "../utils/richText";
 import type { Language, NoteColor, StickyNote } from "../types";
 
 const FONT_OPTIONS: { id: string; label: string; css: string }[] = [
@@ -93,21 +99,19 @@ export const NoteCard: React.FC<NoteCardProps> = ({
     FONT_OPTIONS[0].css;
 
   const refreshActiveFormats = () => {
-    try {
-      setActiveFormats({
-        bold: document.queryCommandState("bold"),
-        italic: document.queryCommandState("italic"),
-        strikeThrough: document.queryCommandState("strikeThrough"),
-        underline: document.queryCommandState("underline"),
-      });
-    } catch {
-      // Ignore if selection is outside
-    }
+    const el = editorRef.current;
+    setActiveFormats({
+      bold: queryFormatState(el, "bold"),
+      italic: queryFormatState(el, "italic"),
+      strikeThrough: queryFormatState(el, "strikeThrough"),
+      underline: queryFormatState(el, "underline"),
+    });
   };
 
   useEffect(() => {
     const el = editorRef.current;
     if (!el || note.is_checklist) return;
+    if (document.activeElement === el) return;
     const sanitized = sanitizeNoteHtml(note.content);
     if (sanitized !== lastDomHtmlRef.current) {
       el.innerHTML = sanitized;
@@ -192,13 +196,13 @@ export const NoteCard: React.FC<NoteCardProps> = ({
     document.execCommand("insertText", false, plain);
   };
 
-  const applyFormat = (cmd: "bold" | "italic" | "strikeThrough" | "underline") => {
+  const applyFormat = (cmd: FormatCmd) => {
     const el = editorRef.current;
     if (!el) return;
     if (document.activeElement !== el) {
       el.focus();
     }
-    document.execCommand(cmd, false);
+    toggleEditorFormat(el, cmd);
     commitEditorHtml(el.innerHTML, el.innerText ?? "");
     refreshActiveFormats();
   };

@@ -7,7 +7,11 @@ use rand::RngCore;
 use std::fs::{self, OpenOptions};
 use std::io::{Seek, SeekFrom, Write};
 use std::path::Path;
+use x25519_dalek::{PublicKey, StaticSecret};
 use zeroize::Zeroizing;
+
+const AAD_RECOVERY_DEK: &[u8] = b"lockpad-v1-recovery-dek";
+const RECOVERY_ALPHABET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 pub const CHUNK_SIZE: usize = 256 * 1024; // 256 KiB plaintext per chunk
 pub const POLY1305_TAG_LEN: usize = 16;
@@ -162,9 +166,104 @@ pub fn shred_file(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Generates a random 24-character recovery key formatted in 6 groups of 4.
+pub fn generate_recovery_key_24() -> Zeroizing<String> {
+    let mut rng = rand::thread_rng();
+    let mut out = String::with_capacity(29);
+    for i in 0..24 {
+        if i > 0 && i % 4 == 0 {
+            out.push('-');
+        }
+        let idx = (rng.next_u32() as usize) % RECOVERY_ALPHABET.len();
+        out.push(RECOVERY_ALPHABET[idx] as char);
+    }
+    Zeroizing::new(out)
+}
+
+pub fn normalize_recovery_key(key: &str) -> Zeroizing<String> {
+    let norm: String = key
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != '-')
+        .flat_map(|c| c.to_uppercase())
+        .collect();
+    Zeroizing::new(norm)
+}
+
+fn derive_recovery_secret(recovery_key: &str, salt: &[u8; 32]) -> Result<StaticSecret, String> {
+    let norm = normalize_recovery_key(recovery_key);
+    if norm.len() < 16 {
+        return Err("Chave de recuperação inválida.".to_string());
+    }
+    let bytes = derive_kek(&norm, salt)?;
+    Ok(StaticSecret::from(*bytes))
+}
+
+pub fn recovery_pubkey_from_key(
+    recovery_key: &str,
+    salt: &[u8; 32],
+) -> Result<[u8; 32], String> {
+    let secret = derive_recovery_secret(recovery_key, salt)?;
+    let pubkey = PublicKey::from(&secret);
+    Ok(pubkey.to_bytes())
+}
+
+pub fn wrap_dek_with_recovery_pubkey(
+    dek: &[u8; 32],
+    pubkey_bytes: &[u8; 32],
+) -> Result<([u8; 32], [u8; 24], Vec<u8>), String> {
+    let eph_priv = StaticSecret::from(random_bytes::<32>());
+    let eph_pub = PublicKey::from(&eph_priv);
+    let recipient_pub = PublicKey::from(*pubkey_bytes);
+    let shared = eph_priv.diffie_hellman(&recipient_pub);
+    let nonce = random_bytes::<24>();
+    let wrapped = encrypt_aead(shared.as_bytes(), &nonce, dek, AAD_RECOVERY_DEK)?;
+    Ok((eph_pub.to_bytes(), nonce, wrapped))
+}
+
+pub fn unwrap_dek_with_recovery_key(
+    recovery_key: &str,
+    salt: &[u8; 32],
+    ephemeral_pub: &[u8; 32],
+    nonce: &[u8; 24],
+    wrapped_dek: &[u8],
+) -> Result<Zeroizing<[u8; 32]>, String> {
+    let secret = derive_recovery_secret(recovery_key, salt)?;
+    let eph_pub = PublicKey::from(*ephemeral_pub);
+    let shared = secret.diffie_hellman(&eph_pub);
+    let pt = decrypt_aead(shared.as_bytes(), nonce, wrapped_dek, AAD_RECOVERY_DEK)?;
+    let arr: [u8; 32] = pt
+        .as_slice()
+        .try_into()
+        .map_err(|_| "Invalid DEK length".to_string())?;
+    Ok(Zeroizing::new(arr))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recovery_key_24_wraps_and_unwraps_dek() {
+        let key = generate_recovery_key_24();
+        assert_eq!(normalize_recovery_key(&key).len(), 24);
+        let salt = random_bytes::<32>();
+        let pubkey = recovery_pubkey_from_key(&key, &salt).unwrap();
+
+        let dek = Zeroizing::new(random_bytes::<32>());
+        let (eph_pub, nonce, wrapped) = wrap_dek_with_recovery_pubkey(&dek, &pubkey).unwrap();
+
+        // Works with or without dashes and lowercase
+        let no_dashes = normalize_recovery_key(&key).to_lowercase();
+        let recovered =
+            unwrap_dek_with_recovery_key(&no_dashes, &salt, &eph_pub, &nonce, &wrapped).unwrap();
+        assert_eq!(recovered.as_ref(), dek.as_ref());
+
+        // Wrong recovery key fails
+        let wrong = generate_recovery_key_24();
+        assert!(
+            unwrap_dek_with_recovery_key(&wrong, &salt, &eph_pub, &nonce, &wrapped).is_err()
+        );
+    }
 
     #[test]
     fn aead_roundtrip_and_tamper_detection() {

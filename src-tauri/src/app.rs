@@ -193,6 +193,21 @@ fn get_vault_status(state: State<Arc<AppRuntime>>) -> Result<VaultStatus, String
 }
 
 #[tauri::command]
+fn generate_recovery_key() -> String {
+    VaultManager::generate_recovery_key().to_string()
+}
+
+#[tauri::command]
+fn complete_onboarding(
+    recovery_key: String,
+    language: String,
+    state: State<Arc<AppRuntime>>,
+) -> Result<PublicStore, String> {
+    let key = Zeroizing::new(recovery_key);
+    state.vault.complete_onboarding(&key, &language)
+}
+
+#[tauri::command]
 fn setup_vault(
     app: AppHandle,
     passphrase: String,
@@ -853,6 +868,8 @@ pub fn run() {
             save_public_notes,
             save_preferences,
             get_vault_status,
+            generate_recovery_key,
+            complete_onboarding,
             setup_vault,
             try_unlock_vault,
             stealth_try_unlock,

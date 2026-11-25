@@ -1,6 +1,8 @@
 use crate::crypto::{
-    atomic_write, chunk_aad, chunk_nonce, decrypt_aead, derive_kek, encrypt_aead, random_bytes,
-    shred_file, CHUNK_SIZE, POLY1305_TAG_LEN,
+    atomic_write, chunk_aad, chunk_nonce, decrypt_aead, derive_kek, encrypt_aead,
+    generate_recovery_key_24, normalize_recovery_key, random_bytes, recovery_pubkey_from_key,
+    shred_file, unwrap_dek_with_recovery_key, wrap_dek_with_recovery_pubkey, CHUNK_SIZE,
+    POLY1305_TAG_LEN,
 };
 use crate::models::{
     AppPreferences, PublicStore, StickyNote, VaultFile, VaultFolder, VaultManifest, VaultMeta,
@@ -174,6 +176,36 @@ impl VaultManager {
         })
     }
 
+    pub fn generate_recovery_key() -> Zeroizing<String> {
+        generate_recovery_key_24()
+    }
+
+    pub fn complete_onboarding(
+        &self,
+        recovery_key: &str,
+        language: &str,
+    ) -> Result<PublicStore, String> {
+        let norm = normalize_recovery_key(recovery_key);
+        if norm.len() != 24 {
+            return Err("A chave de recuperação deve ter 24 caracteres.".to_string());
+        }
+        let guard = self.inner.lock().map_err(|_| "Lock poisoned".to_string())?;
+        let mut store = Self::load_public_store(&guard.data_dir)?;
+        let rec_salt = random_bytes::<32>();
+        let rec_pub = recovery_pubkey_from_key(recovery_key, &rec_salt)?;
+
+        store.preferences.onboarding_completed = true;
+        store.preferences.language = match language {
+            "en" => "en".to_string(),
+            "es" => "es".to_string(),
+            _ => "pt".to_string(),
+        };
+        store.preferences.recovery_salt = Some(B64.encode(rec_salt));
+        store.preferences.recovery_pubkey = Some(B64.encode(rec_pub));
+        Self::save_public_store(&guard.data_dir, &store)?;
+        Ok(store)
+    }
+
     pub fn setup_vault(&self, passphrase: &str) -> Result<VaultStatus, String> {
         if passphrase.trim().len() < 4 {
             return Err("A frase-chave deve ter pelo menos 4 caracteres.".to_string());
@@ -196,6 +228,34 @@ impl VaultManager {
         let verifier_nonce = random_bytes::<24>();
         let verifier = encrypt_aead(&dek, &verifier_nonce, VERIFIER_MAGIC, AAD_VERIFIER)?;
 
+        // Bind recovery public key (if onboarding created one) without ever storing the 24-char secret
+        let pub_store = Self::load_public_store(&guard.data_dir).ok();
+        let (recovery_salt, recovery_ephemeral_pub, recovery_wrapped_dek_nonce, recovery_wrapped_dek) =
+            if let (Some(rs_b64), Some(rp_b64)) = (
+                pub_store.as_ref().and_then(|s| s.preferences.recovery_salt.as_ref()),
+                pub_store.as_ref().and_then(|s| s.preferences.recovery_pubkey.as_ref()),
+            ) {
+                let rs: [u8; 32] = B64
+                    .decode(rs_b64)
+                    .map_err(|_| "Invalid recovery salt".to_string())?
+                    .try_into()
+                    .map_err(|_| "Invalid recovery salt len".to_string())?;
+                let rp: [u8; 32] = B64
+                    .decode(rp_b64)
+                    .map_err(|_| "Invalid recovery pubkey".to_string())?
+                    .try_into()
+                    .map_err(|_| "Invalid recovery pubkey len".to_string())?;
+                let (eph_pub, rec_nonce, rec_wrapped) = wrap_dek_with_recovery_pubkey(&dek, &rp)?;
+                (
+                    Some(B64.encode(rs)),
+                    Some(B64.encode(eph_pub)),
+                    Some(B64.encode(rec_nonce)),
+                    Some(B64.encode(rec_wrapped)),
+                )
+            } else {
+                (None, None, None, None)
+            };
+
         let meta = VaultMeta {
             version: 1,
             salt: B64.encode(salt),
@@ -205,6 +265,10 @@ impl VaultManager {
             verifier: B64.encode(verifier),
             failed_attempts: 0,
             lockout_until: 0,
+            recovery_salt,
+            recovery_ephemeral_pub,
+            recovery_wrapped_dek_nonce,
+            recovery_wrapped_dek,
         };
 
         let initial_manifest = VaultManifest {
@@ -272,14 +336,20 @@ impl VaultManager {
         let dek_vec = match decrypt_aead(&kek, &wrapped_nonce, &wrapped_dek, AAD_DEK) {
             Ok(v) => v,
             Err(_) => {
-                meta.failed_attempts = meta.failed_attempts.saturating_add(1);
-                if meta.failed_attempts >= 5 {
-                    let exponent = (meta.failed_attempts - 5).min(6);
-                    let delay = 5_i64 * (1_i64 << exponent);
-                    meta.lockout_until = now + delay;
+                // Fallback: verify if the input is the 24-character Recovery Key
+                let maybe_recovery = Self::try_unwrap_with_recovery(&meta, passphrase);
+                if let Some(rec_dek) = maybe_recovery {
+                    Zeroizing::new(rec_dek.to_vec())
+                } else {
+                    meta.failed_attempts = meta.failed_attempts.saturating_add(1);
+                    if meta.failed_attempts >= 5 {
+                        let exponent = (meta.failed_attempts - 5).min(6);
+                        let delay = 5_i64 * (1_i64 << exponent);
+                        meta.lockout_until = now + delay;
+                    }
+                    let _ = Self::save_meta(data_dir, &meta);
+                    return Err("Frase-chave incorreta.".to_string());
                 }
-                let _ = Self::save_meta(data_dir, &meta);
-                return Err("Frase-chave incorreta.".to_string());
             }
         };
 
@@ -312,6 +382,17 @@ impl VaultManager {
         }
 
         Ok(dek)
+    }
+
+    fn try_unwrap_with_recovery(meta: &VaultMeta, candidate: &str) -> Option<Zeroizing<[u8; 32]>> {
+        if normalize_recovery_key(candidate).len() != 24 {
+            return None;
+        }
+        let rs: [u8; 32] = B64.decode(meta.recovery_salt.as_ref()?).ok()?.try_into().ok()?;
+        let ep: [u8; 32] = B64.decode(meta.recovery_ephemeral_pub.as_ref()?).ok()?.try_into().ok()?;
+        let rn: [u8; 24] = B64.decode(meta.recovery_wrapped_dek_nonce.as_ref()?).ok()?.try_into().ok()?;
+        let rw = B64.decode(meta.recovery_wrapped_dek.as_ref()?).ok()?;
+        unwrap_dek_with_recovery_key(candidate, &rs, &ep, &rn, &rw).ok()
     }
 
     pub fn try_unlock(&self, passphrase: &str) -> Result<bool, String> {
@@ -443,6 +524,7 @@ impl VaultManager {
             guard.data_dir.clone()
         };
 
+        let existing_meta = Self::load_meta(&data_dir)?;
         let dek = Self::verify_passphrase_only(&data_dir, current)?;
         let new_salt = random_bytes::<32>();
         let new_kek = derive_kek(new_pass, &new_salt)?;
@@ -460,6 +542,16 @@ impl VaultManager {
             verifier: B64.encode(new_verifier),
             failed_attempts: 0,
             lockout_until: 0,
+            recovery_salt: existing_meta.as_ref().and_then(|m| m.recovery_salt.clone()),
+            recovery_ephemeral_pub: existing_meta
+                .as_ref()
+                .and_then(|m| m.recovery_ephemeral_pub.clone()),
+            recovery_wrapped_dek_nonce: existing_meta
+                .as_ref()
+                .and_then(|m| m.recovery_wrapped_dek_nonce.clone()),
+            recovery_wrapped_dek: existing_meta
+                .as_ref()
+                .and_then(|m| m.recovery_wrapped_dek.clone()),
         };
         Self::save_meta(&data_dir, &meta)?;
         Ok(())
@@ -1226,6 +1318,19 @@ mod tests {
             .is_err());
         vm.verify_and_destroy_vault("frase-ultra-secreta", true, true)
             .unwrap();
+        assert!(!vm.status().unwrap().exists);
+
+        // Test onboarding recovery key safeguard flow
+        let rec_key = VaultManager::generate_recovery_key();
+        let store = vm.complete_onboarding(&rec_key, "en").unwrap();
+        assert!(store.preferences.onboarding_completed);
+        assert!(store.preferences.recovery_pubkey.is_some());
+        vm.setup_vault("senha-esquecida").unwrap();
+        vm.lock();
+        // Unlock & destroy using ONLY the 24-char recovery key
+        assert!(vm.try_unlock(&rec_key).unwrap());
+        vm.lock();
+        vm.verify_and_destroy_vault(&rec_key, true, true).unwrap();
         assert!(!vm.status().unwrap().exists);
 
         let _ = fs::remove_dir_all(&dir);

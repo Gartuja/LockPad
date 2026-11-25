@@ -40,6 +40,12 @@ pub struct AppPreferences {
     pub screen_protect: bool,
     pub stealth_trigger_enabled: bool,
     pub protect_public_notes_on_wipe: bool,
+    #[serde(default)]
+    pub onboarding_completed: bool,
+    #[serde(default)]
+    pub recovery_salt: Option<String>,
+    #[serde(default)]
+    pub recovery_pubkey: Option<String>,
 }
 
 impl Default for AppPreferences {
@@ -52,6 +58,9 @@ impl Default for AppPreferences {
             screen_protect: true,
             stealth_trigger_enabled: true,
             protect_public_notes_on_wipe: false,
+            onboarding_completed: false,
+            recovery_salt: None,
+            recovery_pubkey: None,
         }
     }
 }
@@ -72,6 +81,14 @@ pub struct VaultMeta {
     pub verifier: String,
     pub failed_attempts: u32,
     pub lockout_until: i64,
+    #[serde(default)]
+    pub recovery_salt: Option<String>,
+    #[serde(default)]
+    pub recovery_ephemeral_pub: Option<String>,
+    #[serde(default)]
+    pub recovery_wrapped_dek_nonce: Option<String>,
+    #[serde(default)]
+    pub recovery_wrapped_dek: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
