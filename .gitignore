@@ -1,0 +1,23 @@
+# Dependencies & build outputs
+node_modules/
+dist/
+src-tauri/target/
+
+# Release archives and staging
+*.zip
+*.exe
+*.msi
+*.nsis
+release_stage/
+
+# Local user data, vaults, and secrets
+vault/
+*.lpb
+*.enc
+*.meta
+public_notes.json
+.env
+.env.*
+*.log
+.DS_Store
+Thumbs.db
