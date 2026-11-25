@@ -111,6 +111,13 @@ export const api = {
       originalName,
       destDir,
     }),
+  attachVaultNoteFiles: (noteId: string, paths: string[]) =>
+    invoke<VaultManifest>("attach_vault_note_files", { noteId, paths }),
+  removeVaultNoteAttachment: (noteId: string, attachmentId: string) =>
+    invoke<VaultManifest>("remove_vault_note_attachment", {
+      noteId,
+      attachmentId,
+    }),
   checkForUpdates: () => invoke<UpdateCheckResult>("check_for_updates"),
   installGithubUpdate: (downloadUrl: string) =>
     invoke<string>("install_github_update", { downloadUrl }),

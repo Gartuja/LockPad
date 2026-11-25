@@ -20,7 +20,7 @@ import {
   Type,
   X,
 } from "lucide-react";
-import { formatBytes, pubmediaUrl } from "../api";
+import { formatBytes, pubmediaUrl, vaultBlobUrl } from "../api";
 import { getStrings } from "../i18n";
 import {
   htmlToPlainText,
@@ -77,6 +77,7 @@ interface NoteCardProps {
   onPopout?: (note: StickyNote, screenX?: number, screenY?: number) => void;
   onClosePopout?: () => void;
   isPopout?: boolean;
+  isVault?: boolean;
   onStealthCandidate?: (candidate: string, onMatchedCleanup: () => void) => void;
 }
 
@@ -95,8 +96,13 @@ export const NoteCard: React.FC<NoteCardProps> = ({
   onPopout,
   onClosePopout,
   isPopout,
+  isVault,
   onStealthCandidate,
 }) => {
+  const noteRef = useRef<StickyNote>(note);
+  noteRef.current = note;
+  const attUrl = (att: NoteAttachment) =>
+    isVault ? vaultBlobUrl(att.id) : pubmediaUrl(att.stored_name);
   const editorRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const fontBtnRef = useRef<HTMLButtonElement | null>(null);
@@ -167,7 +173,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
         editorRef.current.innerHTML = previousSafeHtml;
       }
       onChange({
-        ...note,
+        ...noteRef.current,
         content: previousSafeHtml,
         updated_at: new Date().toISOString(),
       });
@@ -562,7 +568,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
         <div className="note-attachments">
           <div className="note-attachments-grid">
             {note.attachments.map((att) => {
-              const src = pubmediaUrl(att.stored_name);
+              const src = attUrl(att);
               return (
                 <div key={att.id} className="note-att-card">
                   {att.kind === "image" && (
@@ -579,7 +585,12 @@ export const NoteCard: React.FC<NoteCardProps> = ({
                       style={{ position: "relative" }}
                       onClick={() => setPreviewAtt(att)}
                     >
-                      <video src={src} muted playsInline preload="metadata" />
+                      <video
+                        src={`${src}#t=0.1`}
+                        muted
+                        playsInline
+                        preload="metadata"
+                      />
                       <Film
                         size={14}
                         style={{
@@ -680,14 +691,14 @@ export const NoteCard: React.FC<NoteCardProps> = ({
               {previewAtt.kind === "image" && (
                 <img
                   className="lightbox-media"
-                  src={pubmediaUrl(previewAtt.stored_name)}
+                  src={attUrl(previewAtt)}
                   alt={previewAtt.name}
                 />
               )}
               {previewAtt.kind === "video" && (
                 <video
                   className="lightbox-media"
-                  src={pubmediaUrl(previewAtt.stored_name)}
+                  src={attUrl(previewAtt)}
                   controls
                   autoPlay
                 />
@@ -695,7 +706,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
               {previewAtt.kind === "audio" && (
                 <audio
                   style={{ width: "100%" }}
-                  src={pubmediaUrl(previewAtt.stored_name)}
+                  src={attUrl(previewAtt)}
                   controls
                   autoPlay
                 />

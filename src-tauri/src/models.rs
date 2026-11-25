@@ -132,6 +132,8 @@ pub struct VaultManifest {
     pub notes: Vec<StickyNote>,
     pub folders: Vec<VaultFolder>,
     pub files: Vec<VaultFile>,
+    #[serde(default)]
+    pub note_blobs: Vec<VaultFile>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

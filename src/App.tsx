@@ -97,7 +97,7 @@ export const App: React.FC = () => {
   const [quickUnlockError, setQuickUnlockError] = useState<string | null>(null);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [detachedIds, setDetachedIds] = useState<string[]>([]);
-  const [appVersion, setAppVersion] = useState("2.0.0");
+  const [appVersion, setAppVersion] = useState("2.0.1");
   const [storeLoaded, setStoreLoaded] = useState(false);
   const [banner, setBanner] = useState<{ text: string; isError?: boolean } | null>(null);
   const t = getStrings(preferences.language);
@@ -489,20 +489,36 @@ export const App: React.FC = () => {
   };
 
   const handleAttachFiles = async (noteId: string) => {
-    if (isVaultView) return;
     try {
       const selected = await open({ multiple: true });
       if (!selected) return;
       const paths = Array.isArray(selected) ? selected : [selected];
-      if (publicSaveTimerRef.current) {
-        window.clearTimeout(publicSaveTimerRef.current);
-        publicSaveTimerRef.current = null;
-      }
-      const nextNotes = await api.attachPublicFiles(noteId, paths);
-      setPublicNotes(nextNotes);
-      const updated = nextNotes.find((n) => n.id === noteId);
-      if (updated) {
-        emit("note-sync", { note: updated, isVault: false }).catch(() => {});
+      if (isVaultView) {
+        if (vaultSaveTimerRef.current) {
+          window.clearTimeout(vaultSaveTimerRef.current);
+          vaultSaveTimerRef.current = null;
+        }
+        if (vaultManifest) {
+          await api.saveVaultNotes(vaultManifest.notes);
+        }
+        const manifest = await api.attachVaultNoteFiles(noteId, paths);
+        setVaultManifest(manifest);
+        const updated = manifest.notes.find((n) => n.id === noteId);
+        if (updated) {
+          emit("note-sync", { note: updated, isVault: true }).catch(() => {});
+        }
+      } else {
+        if (publicSaveTimerRef.current) {
+          window.clearTimeout(publicSaveTimerRef.current);
+          publicSaveTimerRef.current = null;
+        }
+        await api.savePublicNotes(publicNotes);
+        const nextNotes = await api.attachPublicFiles(noteId, paths);
+        setPublicNotes(nextNotes);
+        const updated = nextNotes.find((n) => n.id === noteId);
+        if (updated) {
+          emit("note-sync", { note: updated, isVault: false }).catch(() => {});
+        }
       }
     } catch (err) {
       flashBanner(String(err), true);
@@ -510,17 +526,29 @@ export const App: React.FC = () => {
   };
 
   const handleRemoveAttachment = async (noteId: string, attachmentId: string) => {
-    if (isVaultView) return;
     try {
-      if (publicSaveTimerRef.current) {
-        window.clearTimeout(publicSaveTimerRef.current);
-        publicSaveTimerRef.current = null;
-      }
-      const nextNotes = await api.removePublicAttachment(noteId, attachmentId);
-      setPublicNotes(nextNotes);
-      const updated = nextNotes.find((n) => n.id === noteId);
-      if (updated) {
-        emit("note-sync", { note: updated, isVault: false }).catch(() => {});
+      if (isVaultView) {
+        if (vaultSaveTimerRef.current) {
+          window.clearTimeout(vaultSaveTimerRef.current);
+          vaultSaveTimerRef.current = null;
+        }
+        const manifest = await api.removeVaultNoteAttachment(noteId, attachmentId);
+        setVaultManifest(manifest);
+        const updated = manifest.notes.find((n) => n.id === noteId);
+        if (updated) {
+          emit("note-sync", { note: updated, isVault: true }).catch(() => {});
+        }
+      } else {
+        if (publicSaveTimerRef.current) {
+          window.clearTimeout(publicSaveTimerRef.current);
+          publicSaveTimerRef.current = null;
+        }
+        const nextNotes = await api.removePublicAttachment(noteId, attachmentId);
+        setPublicNotes(nextNotes);
+        const updated = nextNotes.find((n) => n.id === noteId);
+        if (updated) {
+          emit("note-sync", { note: updated, isVault: false }).catch(() => {});
+        }
       }
     } catch (err) {
       flashBanner(String(err), true);
@@ -531,11 +559,9 @@ export const App: React.FC = () => {
     try {
       const dir = await open({ directory: true, multiple: false });
       if (!dir || Array.isArray(dir)) return;
-      const dest = await api.exportPublicAttachment(
-        att.stored_name,
-        att.name,
-        dir
-      );
+      const dest = isVaultView
+        ? await api.exportVaultFile(att.id, dir)
+        : await api.exportPublicAttachment(att.stored_name, att.name, dir);
       flashBanner(dest);
     } catch (err) {
       flashBanner(String(err), true);
@@ -669,14 +695,15 @@ export const App: React.FC = () => {
             note={note}
             lang={preferences.language}
             focused={focusedNoteId === note.id}
+            isVault={isVaultView}
             onFocus={() => setFocusedNoteId(note.id)}
             onChange={updateNote}
             onDelete={deleteNote}
             onTogglePin={handleTogglePin}
             onToggleDesktopWidget={handleToggleDesktopWidget}
-            onAttachFiles={!isVaultView ? handleAttachFiles : undefined}
-            onRemoveAttachment={!isVaultView ? handleRemoveAttachment : undefined}
-            onExportAttachment={!isVaultView ? handleExportAttachment : undefined}
+            onAttachFiles={handleAttachFiles}
+            onRemoveAttachment={handleRemoveAttachment}
+            onExportAttachment={handleExportAttachment}
             onPopout={handlePopoutNote}
             onStealthCandidate={!isVaultView ? handleStealthCandidate : undefined}
           />

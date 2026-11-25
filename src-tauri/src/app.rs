@@ -722,6 +722,26 @@ fn export_public_attachment(
 }
 
 #[tauri::command]
+fn attach_vault_note_files(
+    note_id: String,
+    paths: Vec<String>,
+    state: State<Arc<AppRuntime>>,
+) -> Result<VaultManifest, String> {
+    state.vault.attach_vault_note_files(&note_id, paths)
+}
+
+#[tauri::command]
+fn remove_vault_note_attachment(
+    note_id: String,
+    attachment_id: String,
+    state: State<Arc<AppRuntime>>,
+) -> Result<VaultManifest, String> {
+    state
+        .vault
+        .remove_vault_note_attachment(&note_id, &attachment_id)
+}
+
+#[tauri::command]
 fn verify_and_destroy_vault(
     app: AppHandle,
     passphrase: String,
@@ -810,6 +830,51 @@ fn parse_range_header(header: &str, total: u64) -> Option<(u64, u64)> {
     Some((start, end))
 }
 
+fn percent_decode_path(raw: &str) -> String {
+    let bytes = raw.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            let hex = &raw[i + 1..i + 3];
+            if let Ok(b) = u8::from_str_radix(hex, 16) {
+                out.push(b);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn extract_blob_id(uri_path: &str) -> String {
+    let decoded = percent_decode_path(uri_path);
+    let trimmed = decoded.trim_start_matches('/');
+    trimmed
+        .strip_prefix("blob/")
+        .unwrap_or(trimmed)
+        .to_string()
+}
+
+#[cfg(test)]
+mod app_tests {
+    use super::extract_blob_id;
+
+    #[test]
+    fn extract_blob_id_decodes_windows_convert_file_src_paths() {
+        assert_eq!(
+            extract_blob_id("/blob%2F123_Crazy%20frog%20Bass.mp3"),
+            "123_Crazy frog Bass.mp3"
+        );
+        assert_eq!(
+            extract_blob_id("/blob/456_habbo-habboween.gif"),
+            "456_habbo-habboween.gif"
+        );
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let uninstall_gate_mode = std::env::args().any(|a| a == "--uninstall-gate");
@@ -820,8 +885,7 @@ pub fn run() {
             let app = ctx.app_handle();
             let runtime = app.state::<Arc<AppRuntime>>();
 
-            let path = request.uri().path();
-            let file_id = path.trim_start_matches('/').strip_prefix("blob/").unwrap_or("");
+            let file_id = extract_blob_id(request.uri().path());
             if file_id.is_empty() {
                 return tauri::http::Response::builder()
                     .status(404)
@@ -852,10 +916,13 @@ pub fn run() {
                         .body(b"Vault locked".to_vec())
                         .unwrap();
                 }
-                guard
-                    .manifest
-                    .as_ref()
-                    .and_then(|m| m.files.iter().find(|f| f.id == file_id).cloned())
+                guard.manifest.as_ref().and_then(|m| {
+                    m.files
+                        .iter()
+                        .chain(m.note_blobs.iter())
+                        .find(|f| f.id == file_id)
+                        .cloned()
+                })
             };
 
             let Some(vf) = file_meta else {
@@ -870,6 +937,7 @@ pub fn run() {
                 return tauri::http::Response::builder()
                     .status(200)
                     .header("Content-Type", vf.mime_type)
+                    .header("Access-Control-Allow-Origin", "*")
                     .header("Cache-Control", "no-store, no-cache, must-revalidate")
                     .header("Accept-Ranges", "bytes")
                     .body(Vec::new())
@@ -879,11 +947,12 @@ pub fn run() {
             if let Some(rh) = range_hdr {
                 if let Some((start, end)) = parse_range_header(&rh, total) {
                     if let Ok((mime, total_len, data)) =
-                        runtime.vault.read_blob_range(file_id, start, end)
+                        runtime.vault.read_blob_range(&file_id, start, end)
                     {
                         return tauri::http::Response::builder()
                             .status(206)
                             .header("Content-Type", mime)
+                            .header("Access-Control-Allow-Origin", "*")
                             .header("Content-Length", data.len().to_string())
                             .header(
                                 "Content-Range",
@@ -902,10 +971,11 @@ pub fn run() {
                     .unwrap();
             }
 
-            match runtime.vault.read_blob_range(file_id, 0, total - 1) {
+            match runtime.vault.read_blob_range(&file_id, 0, total - 1) {
                 Ok((mime, _total_len, data)) => tauri::http::Response::builder()
                     .status(200)
                     .header("Content-Type", mime)
+                    .header("Access-Control-Allow-Origin", "*")
                     .header("Content-Length", data.len().to_string())
                     .header("Accept-Ranges", "bytes")
                     .header("Cache-Control", "no-store, no-cache, must-revalidate")
@@ -922,15 +992,14 @@ pub fn run() {
             let app = ctx.app_handle();
             let runtime = app.state::<Arc<AppRuntime>>();
 
-            let path = request.uri().path();
-            let raw_name = path.trim_start_matches('/').strip_prefix("blob/").unwrap_or("");
+            let raw_name = extract_blob_id(request.uri().path());
             if raw_name.is_empty() {
                 return tauri::http::Response::builder()
                     .status(404)
                     .body(b"Not found".to_vec())
                     .unwrap();
             }
-            let safe_name = crate::vault::sanitize_filename(raw_name);
+            let safe_name = crate::vault::sanitize_filename(&raw_name);
             let data_dir = match runtime.vault.inner.lock() {
                 Ok(g) => g.data_dir.clone(),
                 Err(_) => {
@@ -960,6 +1029,7 @@ pub fn run() {
                 return tauri::http::Response::builder()
                     .status(200)
                     .header("Content-Type", mime)
+                    .header("Access-Control-Allow-Origin", "*")
                     .header("Accept-Ranges", "bytes")
                     .body(Vec::new())
                     .unwrap();
@@ -979,6 +1049,7 @@ pub fn run() {
                         return tauri::http::Response::builder()
                             .status(206)
                             .header("Content-Type", mime)
+                            .header("Access-Control-Allow-Origin", "*")
                             .header("Content-Length", buf.len().to_string())
                             .header("Content-Range", format!("bytes {start}-{end}/{total}"))
                             .header("Accept-Ranges", "bytes")
@@ -998,6 +1069,7 @@ pub fn run() {
                 Ok(_) => tauri::http::Response::builder()
                     .status(200)
                     .header("Content-Type", mime)
+                    .header("Access-Control-Allow-Origin", "*")
                     .header("Content-Length", buf.len().to_string())
                     .header("Accept-Ranges", "bytes")
                     .body(buf)
@@ -1215,6 +1287,8 @@ pub fn run() {
             attach_public_files,
             remove_public_attachment,
             export_public_attachment,
+            attach_vault_note_files,
+            remove_vault_note_attachment,
             check_for_updates,
             install_github_update,
         ])

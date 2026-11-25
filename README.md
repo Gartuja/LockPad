@@ -14,7 +14,7 @@
   - **15 Font Styles**: Visual font selector rendered in each typeface with Windows & Linux font fallbacks.
   - **Adjustable Text Size**: Per-note font sizing from `11px` to `26px` (`AA`).
   - **Custom Image & GIF Backgrounds**: Personalize any note with `JPEG`, `PNG`, or animated `GIF` backgrounds with automatic readability scrims.
-  - **File & Media Attachments on Any Note**: Attach images, GIFs, videos, audio clips, and arbitrary documents directly to regular sticky notes with inline playback/preview and export.
+  - **File & Media Attachments on Any Note (Normal & Vault)**: Attach images, GIFs, videos, audio clips, and arbitrary documents directly to both regular sticky notes and encrypted vault sticky notes (stored as XChaCha20-Poly1305 encrypted blobs inside the vault) with inline playback/preview and export.
 - **Floating Notes, Always-On-Top Overlay & Desktop Widget Mode**:
   - Drag any note outside the main LockPad window (or click detach) to float it independently on your desktop with real-time sync.
   - Pin any note as an **Always-On-Top Overlay** — protected against Windows **"Show Desktop" (`Win+D`)** so pinned notes remain visible.

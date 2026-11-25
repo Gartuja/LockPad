@@ -10,7 +10,7 @@ use crate::models::{
 };
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use chrono::Utc;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -332,6 +332,7 @@ impl VaultManager {
             }],
             folders: vec![],
             files: vec![],
+            note_blobs: vec![],
         };
 
         Self::save_meta(&guard.data_dir, &meta)?;
@@ -624,9 +625,26 @@ impl VaultManager {
             .manifest
             .as_mut()
             .ok_or_else(|| "Cofre bloqueado.".to_string())?;
+        let referenced: HashSet<String> = notes
+            .iter()
+            .flat_map(|n| n.attachments.iter().map(|a| a.id.clone()))
+            .collect();
+        let mut orphaned_blobs: Vec<String> = Vec::new();
+        manifest.note_blobs.retain(|b| {
+            if referenced.contains(&b.id) {
+                true
+            } else {
+                orphaned_blobs.push(b.blob_id.clone());
+                false
+            }
+        });
         manifest.notes = notes;
         let updated = manifest.clone();
         Self::save_manifest(&data_dir, &dek, &updated)?;
+        for blob_id in orphaned_blobs {
+            let blob_path = Self::blobs_dir(&data_dir).join(format!("{blob_id}.lpb"));
+            let _ = shred_file(&blob_path);
+        }
         guard.last_activity = Instant::now();
         Ok(updated)
     }
@@ -1006,6 +1024,7 @@ impl VaultManager {
             let vf = manifest
                 .files
                 .iter()
+                .chain(manifest.note_blobs.iter())
                 .find(|f| f.id == file_id)
                 .cloned()
                 .ok_or_else(|| "Arquivo não encontrado.".to_string())?;
@@ -1086,6 +1105,7 @@ impl VaultManager {
             let vf = manifest
                 .files
                 .iter()
+                .chain(manifest.note_blobs.iter())
                 .find(|f| f.id == file_id)
                 .cloned()
                 .ok_or_else(|| "Arquivo não encontrado.".to_string())?;
@@ -1357,6 +1377,109 @@ impl VaultManager {
         fs::copy(&src, &dest).map_err(|e| format!("Falha ao exportar anexo: {e}"))?;
         Ok(dest.to_string_lossy().to_string())
     }
+
+    pub fn attach_vault_note_files(
+        &self,
+        note_id: &str,
+        paths: Vec<String>,
+    ) -> Result<VaultManifest, String> {
+        let (data_dir, dek) = {
+            let guard = self.inner.lock().map_err(|_| "Lock poisoned".to_string())?;
+            let dek = guard
+                .dek
+                .as_ref()
+                .ok_or_else(|| "Cofre bloqueado.".to_string())?
+                .clone();
+            (guard.data_dir.clone(), dek)
+        };
+
+        let mut new_blobs: Vec<VaultFile> = Vec::new();
+        let mut new_atts: Vec<NoteAttachment> = Vec::new();
+
+        for raw in paths {
+            let p = PathBuf::from(&raw);
+            if !p.is_file() {
+                continue;
+            }
+            let name = p
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("arquivo")
+                .to_string();
+            let mime = mime_guess::from_path(&p)
+                .first_or_octet_stream()
+                .essence_str()
+                .to_string();
+            let file = File::open(&p).map_err(|e| format!("Open file failed: {e}"))?;
+            let vf = Self::encrypt_stream_to_blob(&data_dir, &dek, file, name, mime, None)?;
+            new_atts.push(NoteAttachment {
+                id: vf.id.clone(),
+                name: vf.name.clone(),
+                mime_type: vf.mime_type.clone(),
+                kind: vf.kind.clone(),
+                size_bytes: vf.size_bytes,
+                stored_name: vf.id.clone(),
+            });
+            new_blobs.push(vf);
+        }
+
+        let mut guard = self.inner.lock().map_err(|_| "Lock poisoned".to_string())?;
+        let manifest = guard
+            .manifest
+            .as_mut()
+            .ok_or_else(|| "Cofre bloqueado.".to_string())?;
+        let note = manifest
+            .notes
+            .iter_mut()
+            .find(|n| n.id == note_id)
+            .ok_or_else(|| "Nota do cofre não encontrada.".to_string())?;
+        note.attachments.extend(new_atts);
+        note.updated_at = Utc::now().to_rfc3339();
+        manifest.note_blobs.extend(new_blobs);
+        let updated = manifest.clone();
+        Self::save_manifest(&data_dir, &dek, &updated)?;
+        guard.last_activity = Instant::now();
+        Ok(updated)
+    }
+
+    pub fn remove_vault_note_attachment(
+        &self,
+        note_id: &str,
+        attachment_id: &str,
+    ) -> Result<VaultManifest, String> {
+        let mut guard = self.inner.lock().map_err(|_| "Lock poisoned".to_string())?;
+        let data_dir = guard.data_dir.clone();
+        let dek = guard
+            .dek
+            .as_ref()
+            .ok_or_else(|| "Cofre bloqueado.".to_string())?
+            .clone();
+        let manifest = guard
+            .manifest
+            .as_mut()
+            .ok_or_else(|| "Cofre bloqueado.".to_string())?;
+        if let Some(note) = manifest.notes.iter_mut().find(|n| n.id == note_id) {
+            note.attachments.retain(|a| a.id != attachment_id);
+            note.updated_at = Utc::now().to_rfc3339();
+        }
+        let mut blob_id_to_shred: Option<String> = None;
+        manifest.note_blobs.retain(|b| {
+            if b.id == attachment_id {
+                blob_id_to_shred = Some(b.blob_id.clone());
+                false
+            } else {
+                true
+            }
+        });
+        let updated = manifest.clone();
+        Self::save_manifest(&data_dir, &dek, &updated)?;
+        if let Some(bid) = blob_id_to_shred {
+            let blob_path = Self::blobs_dir(&data_dir).join(format!("{bid}.lpb"));
+            let _ = shred_file(&blob_path);
+        }
+        guard.last_activity = Instant::now();
+        Ok(updated)
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -1543,6 +1666,25 @@ mod tests {
         let (_mime, total, slice) = vm.read_blob_range(&file_id, start, end).unwrap();
         assert_eq!(total as usize, big_payload.len());
         assert_eq!(slice.as_slice(), &big_payload[(start as usize)..=(end as usize)]);
+
+        // Attach & remove encrypted files on a vault sticky note
+        let mut m3 = vm.get_manifest().unwrap();
+        let note_id = m3.notes[0].id.clone();
+        let tmp_media = std::env::temp_dir().join(format!("lockpad_att_{}.mp3", Uuid::new_v4()));
+        fs::write(&tmp_media, b"fake-mp3-payload-12345").unwrap();
+        m3 = vm
+            .attach_vault_note_files(&note_id, vec![tmp_media.to_string_lossy().to_string()])
+            .unwrap();
+        assert_eq!(m3.notes[0].attachments.len(), 1);
+        assert_eq!(m3.note_blobs.len(), 1);
+        let att_id = m3.notes[0].attachments[0].id.clone();
+        let (_amime, atot, adata) = vm.read_blob_range(&att_id, 0, 21).unwrap();
+        assert_eq!(atot, 22);
+        assert_eq!(adata.as_slice(), b"fake-mp3-payload-12345");
+        let m4 = vm.remove_vault_note_attachment(&note_id, &att_id).unwrap();
+        assert!(m4.notes[0].attachments.is_empty());
+        assert!(m4.note_blobs.is_empty());
+        let _ = fs::remove_file(&tmp_media);
 
         // Destroy requires right passphrase & confirmation
         assert!(vm.verify_and_destroy_vault("errada", true, false).is_err());

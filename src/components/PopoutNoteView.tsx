@@ -147,16 +147,24 @@ export const PopoutNoteView: React.FC<PopoutNoteViewProps> = ({
   };
 
   const handleAttachFiles = async (targetNoteId: string) => {
-    if (isVault) return;
     try {
       const selected = await open({ multiple: true });
       if (!selected) return;
       const paths = Array.isArray(selected) ? selected : [selected];
-      const nextNotes = await api.attachPublicFiles(targetNoteId, paths);
-      const updated = nextNotes.find((n) => n.id === targetNoteId);
-      if (updated) {
-        setNote(updated);
-        emit("note-sync", { note: updated, isVault: false }).catch(() => {});
+      if (isVault) {
+        const manifest = await api.attachVaultNoteFiles(targetNoteId, paths);
+        const updated = manifest.notes.find((n) => n.id === targetNoteId);
+        if (updated) {
+          setNote(updated);
+          emit("note-sync", { note: updated, isVault: true }).catch(() => {});
+        }
+      } else {
+        const nextNotes = await api.attachPublicFiles(targetNoteId, paths);
+        const updated = nextNotes.find((n) => n.id === targetNoteId);
+        if (updated) {
+          setNote(updated);
+          emit("note-sync", { note: updated, isVault: false }).catch(() => {});
+        }
       }
     } catch {
       // Ignore
@@ -167,16 +175,27 @@ export const PopoutNoteView: React.FC<PopoutNoteViewProps> = ({
     targetNoteId: string,
     attachmentId: string
   ) => {
-    if (isVault) return;
     try {
-      const nextNotes = await api.removePublicAttachment(
-        targetNoteId,
-        attachmentId
-      );
-      const updated = nextNotes.find((n) => n.id === targetNoteId);
-      if (updated) {
-        setNote(updated);
-        emit("note-sync", { note: updated, isVault: false }).catch(() => {});
+      if (isVault) {
+        const manifest = await api.removeVaultNoteAttachment(
+          targetNoteId,
+          attachmentId
+        );
+        const updated = manifest.notes.find((n) => n.id === targetNoteId);
+        if (updated) {
+          setNote(updated);
+          emit("note-sync", { note: updated, isVault: true }).catch(() => {});
+        }
+      } else {
+        const nextNotes = await api.removePublicAttachment(
+          targetNoteId,
+          attachmentId
+        );
+        const updated = nextNotes.find((n) => n.id === targetNoteId);
+        if (updated) {
+          setNote(updated);
+          emit("note-sync", { note: updated, isVault: false }).catch(() => {});
+        }
       }
     } catch {
       // Ignore
@@ -187,7 +206,11 @@ export const PopoutNoteView: React.FC<PopoutNoteViewProps> = ({
     try {
       const dir = await open({ directory: true, multiple: false });
       if (!dir || Array.isArray(dir)) return;
-      await api.exportPublicAttachment(att.stored_name, att.name, dir);
+      if (isVault) {
+        await api.exportVaultFile(att.id, dir);
+      } else {
+        await api.exportPublicAttachment(att.stored_name, att.name, dir);
+      }
     } catch {
       // Ignore
     }
@@ -206,11 +229,12 @@ export const PopoutNoteView: React.FC<PopoutNoteViewProps> = ({
         lang={lang}
         focused={false}
         isPopout={true}
+        isVault={isVault}
         onFocus={() => {}}
         onChange={handleNoteChange}
-        onAttachFiles={!isVault ? handleAttachFiles : undefined}
-        onRemoveAttachment={!isVault ? handleRemoveAttachment : undefined}
-        onExportAttachment={!isVault ? handleExportAttachment : undefined}
+        onAttachFiles={handleAttachFiles}
+        onRemoveAttachment={handleRemoveAttachment}
+        onExportAttachment={handleExportAttachment}
         onToggleDesktopWidget={handleToggleDesktopWidget}
         onDelete={async () => {
           if (isVault) {
