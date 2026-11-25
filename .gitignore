@@ -12,6 +12,7 @@ release_stage/
 
 # Local user data, vaults, and secrets
 vault/
+public_media/
 *.lpb
 *.enc
 *.meta

@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { open } from "@tauri-apps/plugin-dialog";
 import { api } from "../api";
-import type { Language, StickyNote } from "../types";
+import type { Language, NoteAttachment, StickyNote } from "../types";
 import { NoteCard } from "./NoteCard";
 
 interface PopoutNoteViewProps {
@@ -133,6 +134,65 @@ export const PopoutNoteView: React.FC<PopoutNoteViewProps> = ({
     }
   };
 
+  const handleToggleDesktopWidget = async (updated: StickyNote) => {
+    try {
+      await api.setNoteWindowDesktopWidget(
+        noteId,
+        isVault,
+        Boolean(updated.desktop_widget)
+      );
+    } catch {
+      // Ignore
+    }
+  };
+
+  const handleAttachFiles = async (targetNoteId: string) => {
+    if (isVault) return;
+    try {
+      const selected = await open({ multiple: true });
+      if (!selected) return;
+      const paths = Array.isArray(selected) ? selected : [selected];
+      const nextNotes = await api.attachPublicFiles(targetNoteId, paths);
+      const updated = nextNotes.find((n) => n.id === targetNoteId);
+      if (updated) {
+        setNote(updated);
+        emit("note-sync", { note: updated, isVault: false }).catch(() => {});
+      }
+    } catch {
+      // Ignore
+    }
+  };
+
+  const handleRemoveAttachment = async (
+    targetNoteId: string,
+    attachmentId: string
+  ) => {
+    if (isVault) return;
+    try {
+      const nextNotes = await api.removePublicAttachment(
+        targetNoteId,
+        attachmentId
+      );
+      const updated = nextNotes.find((n) => n.id === targetNoteId);
+      if (updated) {
+        setNote(updated);
+        emit("note-sync", { note: updated, isVault: false }).catch(() => {});
+      }
+    } catch {
+      // Ignore
+    }
+  };
+
+  const handleExportAttachment = async (att: NoteAttachment) => {
+    try {
+      const dir = await open({ directory: true, multiple: false });
+      if (!dir || Array.isArray(dir)) return;
+      await api.exportPublicAttachment(att.stored_name, att.name, dir);
+    } catch {
+      // Ignore
+    }
+  };
+
   if (!note) {
     return (
       <div className={`popout-root ${theme === "light" ? "theme-light" : "theme-dark"}`} />
@@ -148,6 +208,10 @@ export const PopoutNoteView: React.FC<PopoutNoteViewProps> = ({
         isPopout={true}
         onFocus={() => {}}
         onChange={handleNoteChange}
+        onAttachFiles={!isVault ? handleAttachFiles : undefined}
+        onRemoveAttachment={!isVault ? handleRemoveAttachment : undefined}
+        onExportAttachment={!isVault ? handleExportAttachment : undefined}
+        onToggleDesktopWidget={handleToggleDesktopWidget}
         onDelete={async () => {
           if (isVault) {
             const manifest = await api.getVaultManifest();

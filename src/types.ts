@@ -16,6 +16,15 @@ export type NoteColor =
   | "pink"
   | "slate";
 
+export interface NoteAttachment {
+  id: string;
+  name: string;
+  mime_type: string;
+  kind: VaultFileKind;
+  size_bytes: number;
+  stored_name: string;
+}
+
 export interface StickyNote {
   id: string;
   title: string;
@@ -24,6 +33,8 @@ export interface StickyNote {
   background_image?: string | null;
   font_size?: number | null;
   font_family?: string | null;
+  attachments?: NoteAttachment[];
+  desktop_widget?: boolean;
   is_checklist: boolean;
   checklist: ChecklistItem[];
   pinned: boolean;

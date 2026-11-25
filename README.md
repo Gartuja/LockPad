@@ -14,9 +14,14 @@
   - **15 Font Styles**: Visual font selector rendered in each typeface with Windows & Linux font fallbacks.
   - **Adjustable Text Size**: Per-note font sizing from `11px` to `26px` (`AA`).
   - **Custom Image & GIF Backgrounds**: Personalize any note with `JPEG`, `PNG`, or animated `GIF` backgrounds with automatic readability scrims.
-- **Floating Desktop Notes & Always-On-Top Overlay**:
+  - **File & Media Attachments on Any Note**: Attach images, GIFs, videos, audio clips, and arbitrary documents directly to regular sticky notes with inline playback/preview and export.
+- **Floating Notes, Always-On-Top Overlay & Desktop Widget Mode**:
   - Drag any note outside the main LockPad window (or click detach) to float it independently on your desktop with real-time sync.
   - Pin any note as an **Always-On-Top Overlay** — protected against Windows **"Show Desktop" (`Win+D`)** so pinned notes remain visible.
+  - Or switch a note to **Desktop Widget Mode (Rainmeter-style)** so it sits directly on the desktop behind open application windows while staying visible after `Win+D`.
+- **Protected Vault Folder & Executable Deletion Lock**:
+  - Active vault folders (`vault/`) are marked hidden/system with Windows NTFS `(DE)` deny permissions and a locked `.lockpad.guard` file handle while running.
+  - The LockPad executable is also protected against accidental/unauthorized deletion or moving to the Recycle Bin until authenticated with your vault passphrase or 24-character recovery key.
 - **System Tray & Safe Exit**:
   - Minimize sends LockPad to the system tray (notification area).
   - Closing the main window prompts for confirmation before exiting and locks the vault.

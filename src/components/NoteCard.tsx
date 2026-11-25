@@ -1,7 +1,26 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Check, ExternalLink, GripVertical, Image as ImageIcon, ListTodo, Palette, Pin, Plus, Trash2, Type, X } from "lucide-react";
+import {
+  Check,
+  Download,
+  ExternalLink,
+  FileText,
+  Film,
+  GripVertical,
+  Image as ImageIcon,
+  ListTodo,
+  Monitor,
+  Music,
+  Palette,
+  Paperclip,
+  Pin,
+  Plus,
+  Trash2,
+  Type,
+  X,
+} from "lucide-react";
+import { formatBytes, pubmediaUrl } from "../api";
 import { getStrings } from "../i18n";
 import {
   htmlToPlainText,
@@ -10,7 +29,7 @@ import {
   toggleEditorFormat,
   type FormatCmd,
 } from "../utils/richText";
-import type { Language, NoteColor, StickyNote } from "../types";
+import type { Language, NoteAttachment, NoteColor, StickyNote } from "../types";
 
 const FONT_OPTIONS: { id: string; label: string; css: string }[] = [
   { id: "sans", label: "Padrão (Inter / Segoe)", css: '"Inter", "Segoe UI", "Ubuntu", "Noto Sans", system-ui, sans-serif' },
@@ -51,6 +70,10 @@ interface NoteCardProps {
   onChange: (updated: StickyNote) => void;
   onDelete: (id: string) => void;
   onTogglePin?: (note: StickyNote) => void;
+  onToggleDesktopWidget?: (note: StickyNote) => void;
+  onAttachFiles?: (noteId: string) => void;
+  onRemoveAttachment?: (noteId: string, attachmentId: string) => void;
+  onExportAttachment?: (att: NoteAttachment) => void;
   onPopout?: (note: StickyNote, screenX?: number, screenY?: number) => void;
   onClosePopout?: () => void;
   isPopout?: boolean;
@@ -65,6 +88,10 @@ export const NoteCard: React.FC<NoteCardProps> = ({
   onChange,
   onDelete,
   onTogglePin,
+  onToggleDesktopWidget,
+  onAttachFiles,
+  onRemoveAttachment,
+  onExportAttachment,
   onPopout,
   onClosePopout,
   isPopout,
@@ -81,6 +108,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
   const [mediaMenuOpen, setMediaMenuOpen] = useState(false);
   const [fontSizeOpen, setFontSizeOpen] = useState(false);
   const [fontFamilyOpen, setFontFamilyOpen] = useState(false);
+  const [previewAtt, setPreviewAtt] = useState<NoteAttachment | null>(null);
   const [activeFormats, setActiveFormats] = useState({
     bold: false,
     italic: false,
@@ -383,9 +411,11 @@ export const NoteCard: React.FC<NoteCardProps> = ({
           className={`mini-btn ${note.pinned ? "active" : ""}`}
           title={note.pinned ? t.unpinTip : t.pinTip}
           onClick={() => {
+            const nextPinned = !note.pinned;
             const nextNote = {
               ...note,
-              pinned: !note.pinned,
+              pinned: nextPinned,
+              desktop_widget: nextPinned ? false : note.desktop_widget,
               updated_at: new Date().toISOString(),
             };
             onChange(nextNote);
@@ -394,6 +424,25 @@ export const NoteCard: React.FC<NoteCardProps> = ({
         >
           <Pin size={13} />
         </button>
+        {onToggleDesktopWidget && (
+          <button
+            className={`mini-btn ${note.desktop_widget ? "active" : ""}`}
+            title={note.desktop_widget ? t.unwidgetTip : t.desktopWidgetTip}
+            onClick={() => {
+              const nextWidget = !note.desktop_widget;
+              const nextNote = {
+                ...note,
+                desktop_widget: nextWidget,
+                pinned: nextWidget ? false : note.pinned,
+                updated_at: new Date().toISOString(),
+              };
+              onChange(nextNote);
+              onToggleDesktopWidget(nextNote);
+            }}
+          >
+            <Monitor size={13} />
+          </button>
+        )}
         <button
           className="mini-btn"
           title={t.deleteNoteTip}
@@ -508,6 +557,174 @@ export const NoteCard: React.FC<NoteCardProps> = ({
           onPaste={handleEditorPaste}
         />
       )}
+
+      {note.attachments && note.attachments.length > 0 && (
+        <div className="note-attachments">
+          <div className="note-attachments-grid">
+            {note.attachments.map((att) => {
+              const src = pubmediaUrl(att.stored_name);
+              return (
+                <div key={att.id} className="note-att-card">
+                  {att.kind === "image" && (
+                    <div
+                      className="note-att-thumb"
+                      onClick={() => setPreviewAtt(att)}
+                    >
+                      <img src={src} alt={att.name} loading="lazy" />
+                    </div>
+                  )}
+                  {att.kind === "video" && (
+                    <div
+                      className="note-att-thumb"
+                      style={{ position: "relative" }}
+                      onClick={() => setPreviewAtt(att)}
+                    >
+                      <video src={src} muted playsInline preload="metadata" />
+                      <Film
+                        size={14}
+                        style={{
+                          position: "absolute",
+                          right: 4,
+                          bottom: 4,
+                          color: "#fff",
+                          filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.8))",
+                        }}
+                      />
+                    </div>
+                  )}
+                  {att.kind === "audio" && (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 4,
+                        paddingTop: 2,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 4,
+                          color: "var(--accent)",
+                          fontSize: 10.5,
+                          cursor: "pointer",
+                        }}
+                        onClick={() => setPreviewAtt(att)}
+                      >
+                        <Music size={13} />
+                        <span className="note-att-name">{att.name}</span>
+                      </div>
+                      <audio controls className="note-att-audio" src={src} />
+                    </div>
+                  )}
+                  {att.kind !== "image" && att.kind !== "video" && att.kind !== "audio" && (
+                    <div
+                      className="note-att-thumb"
+                      onClick={() => onExportAttachment?.(att)}
+                      title={`${att.name} (${formatBytes(att.size_bytes)})`}
+                    >
+                      <FileText size={20} />
+                    </div>
+                  )}
+                  <div className="note-att-footer">
+                    <span className="note-att-name" title={att.name}>
+                      {att.name}
+                    </span>
+                    <div style={{ display: "flex", gap: 2 }}>
+                      {onExportAttachment && (
+                        <button
+                          className="mini-btn"
+                          style={{ width: 20, height: 20 }}
+                          title={t.exportAttachmentTip}
+                          onClick={() => onExportAttachment(att)}
+                        >
+                          <Download size={11} />
+                        </button>
+                      )}
+                      {onRemoveAttachment && (
+                        <button
+                          className="mini-btn"
+                          style={{ width: 20, height: 20, color: "var(--danger)" }}
+                          title={t.removeAttachmentTip}
+                          onClick={() => onRemoveAttachment(note.id, att.id)}
+                        >
+                          <X size={11} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {previewAtt &&
+        createPortal(
+          <div className="modal-backdrop" onClick={() => setPreviewAtt(null)}>
+            <div
+              className="modal-card"
+              style={{ maxWidth: 520 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="modal-header">
+                <div className="modal-title" style={{ fontSize: 13.5 }}>
+                  {previewAtt.name}
+                </div>
+                <button className="icon-btn" onClick={() => setPreviewAtt(null)}>
+                  <X size={16} />
+                </button>
+              </div>
+              {previewAtt.kind === "image" && (
+                <img
+                  className="lightbox-media"
+                  src={pubmediaUrl(previewAtt.stored_name)}
+                  alt={previewAtt.name}
+                />
+              )}
+              {previewAtt.kind === "video" && (
+                <video
+                  className="lightbox-media"
+                  src={pubmediaUrl(previewAtt.stored_name)}
+                  controls
+                  autoPlay
+                />
+              )}
+              {previewAtt.kind === "audio" && (
+                <audio
+                  style={{ width: "100%" }}
+                  src={pubmediaUrl(previewAtt.stored_name)}
+                  controls
+                  autoPlay
+                />
+              )}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  fontSize: 11.5,
+                  color: "var(--text-muted)",
+                }}
+              >
+                <span>
+                  {formatBytes(previewAtt.size_bytes)} • {previewAtt.mime_type}
+                </span>
+                {onExportAttachment && (
+                  <button
+                    className="btn"
+                    onClick={() => onExportAttachment(previewAtt)}
+                  >
+                    <Download size={13} /> {t.exportBtn}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>,
+          document.querySelector(".app-shell, .popout-root") ?? document.body
+        )}
 
       <div className="note-toolbar">
         <div className="note-toolbar-group">
@@ -758,6 +975,16 @@ export const NoteCard: React.FC<NoteCardProps> = ({
               <ImageIcon size={14} />
             </button>
           </div>
+
+          {onAttachFiles && (
+            <button
+              className="mini-btn"
+              title={t.attachFileTip}
+              onClick={() => onAttachFiles(note.id)}
+            >
+              <Paperclip size={13} />
+            </button>
+          )}
 
           <div className="palette-wrap">
             {paletteOpen && (

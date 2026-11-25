@@ -1,6 +1,6 @@
 [package]
 name = "lockpad"
-version = "1.9.0"
+version = "2.0.0"
 description = "LockPad - Notas rápidas com cofre criptografado"
 authors = ["LockPad"]
 edition = "2021"
@@ -28,7 +28,7 @@ reqwest = { version = "0.12", default-features = false, features = ["blocking", 
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Storage_FileSystem", "Win32_UI_WindowsAndMessaging"] }
 
 [profile.release]
 panic = "abort"

@@ -8,6 +8,16 @@ pub struct ChecklistItem {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NoteAttachment {
+    pub id: String,
+    pub name: String,
+    pub mime_type: String,
+    pub kind: String,
+    pub size_bytes: u64,
+    pub stored_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StickyNote {
     pub id: String,
     pub title: String,
@@ -19,6 +29,10 @@ pub struct StickyNote {
     pub font_size: Option<u32>,
     #[serde(default)]
     pub font_family: Option<String>,
+    #[serde(default)]
+    pub attachments: Vec<NoteAttachment>,
+    #[serde(default)]
+    pub desktop_widget: bool,
     pub is_checklist: bool,
     pub checklist: Vec<ChecklistItem>,
     pub pinned: bool,

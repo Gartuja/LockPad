@@ -263,6 +263,7 @@ pub fn download_and_install_update(
 
     #[cfg(target_os = "windows")]
     {
+        crate::vault::remove_vault_fs_protection(std::path::Path::new(""), true);
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
 

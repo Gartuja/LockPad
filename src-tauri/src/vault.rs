@@ -5,8 +5,8 @@ use crate::crypto::{
     POLY1305_TAG_LEN,
 };
 use crate::models::{
-    AppPreferences, PublicStore, StickyNote, VaultFile, VaultFolder, VaultManifest, VaultMeta,
-    VaultStatus,
+    AppPreferences, NoteAttachment, PublicStore, StickyNote, VaultFile, VaultFolder,
+    VaultManifest, VaultMeta, VaultStatus,
 };
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use chrono::Utc;
@@ -32,6 +32,7 @@ pub struct VaultInner {
     pub last_activity: Instant,
     pub last_stealth_attempt: Option<Instant>,
     pub screen_protect_active: bool,
+    pub guard_handle: Option<File>,
 }
 
 pub struct VaultManager {
@@ -41,6 +42,10 @@ pub struct VaultManager {
 impl VaultManager {
     pub fn new(data_dir: PathBuf) -> Result<Self, String> {
         fs::create_dir_all(&data_dir).map_err(|e| format!("Failed to create data dir: {e}"))?;
+        let guard_handle = Self::try_open_guard(&data_dir);
+        if Self::meta_path(&data_dir).exists() {
+            apply_vault_fs_protection(&Self::vault_dir(&data_dir), true);
+        }
         Ok(Self {
             inner: Mutex::new(VaultInner {
                 data_dir,
@@ -49,8 +54,42 @@ impl VaultManager {
                 last_activity: Instant::now(),
                 last_stealth_attempt: None,
                 screen_protect_active: false,
+                guard_handle,
             }),
         })
+    }
+
+    pub fn public_media_dir(data_dir: &Path) -> PathBuf {
+        data_dir.join("public_media")
+    }
+
+    fn try_open_guard(data_dir: &Path) -> Option<File> {
+        let vault_dir = Self::vault_dir(data_dir);
+        if !Self::meta_path(data_dir).exists() {
+            return None;
+        }
+        let guard_path = vault_dir.join(".lockpad.guard");
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            // FILE_SHARE_READ (1) only: prevents Windows Explorer / Recycle Bin from deleting vault dir while LockPad runs
+            OpenOptions::new()
+                .create(true)
+                .read(true)
+                .write(true)
+                .share_mode(1)
+                .open(&guard_path)
+                .ok()
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            OpenOptions::new()
+                .create(true)
+                .read(true)
+                .write(true)
+                .open(&guard_path)
+                .ok()
+        }
     }
 
     pub fn vault_dir(data_dir: &Path) -> PathBuf {
@@ -86,6 +125,8 @@ impl VaultManager {
                     background_image: None,
                     font_size: None,
                     font_family: None,
+                    attachments: vec![],
+                    desktop_widget: false,
                     is_checklist: false,
                     checklist: vec![],
                     pinned: false,
@@ -281,6 +322,8 @@ impl VaultManager {
                 background_image: None,
                 font_size: None,
                 font_family: None,
+                attachments: vec![],
+                desktop_widget: false,
                 is_checklist: false,
                 checklist: vec![],
                 pinned: true,
@@ -294,9 +337,12 @@ impl VaultManager {
         Self::save_meta(&guard.data_dir, &meta)?;
         Self::save_manifest(&guard.data_dir, &dek, &initial_manifest)?;
 
+        let data_dir_clone = guard.data_dir.clone();
         guard.dek = Some(dek);
         guard.manifest = Some(initial_manifest);
         guard.last_activity = Instant::now();
+        guard.guard_handle = Self::try_open_guard(&data_dir_clone);
+        apply_vault_fs_protection(&Self::vault_dir(&data_dir_clone), true);
 
         drop(guard);
         self.status()
@@ -1173,11 +1219,20 @@ impl VaultManager {
         // Verify passphrase first; if wrong, refuses and aborts without touching any files.
         let _dek = Self::verify_passphrase_only(&data_dir, passphrase)?;
 
-        // Lock memory first
+        // Lock memory and release guard handle first
         {
             let mut guard = self.inner.lock().map_err(|_| "Lock poisoned".to_string())?;
             guard.dek = None;
             guard.manifest = None;
+            guard.guard_handle = None;
+        }
+
+        let vault_dir = Self::vault_dir(&data_dir);
+        remove_vault_fs_protection(&vault_dir, true);
+
+        let guard_path = vault_dir.join(".lockpad.guard");
+        if guard_path.exists() {
+            let _ = shred_file(&guard_path);
         }
 
         // Shred all blobs
@@ -1196,7 +1251,6 @@ impl VaultManager {
 
         shred_file(&Self::manifest_path(&data_dir))?;
         shred_file(&Self::meta_path(&data_dir))?;
-        let vault_dir = Self::vault_dir(&data_dir);
         if vault_dir.exists() {
             let _ = fs::remove_dir_all(&vault_dir);
         }
@@ -1206,13 +1260,192 @@ impl VaultManager {
             if pub_path.exists() {
                 shred_file(&pub_path)?;
             }
+            let pub_media = Self::public_media_dir(&data_dir);
+            if pub_media.exists() {
+                let _ = fs::remove_dir_all(&pub_media);
+            }
         }
 
         Ok(())
     }
+
+    pub fn attach_public_files(
+        &self,
+        note_id: &str,
+        paths: Vec<String>,
+    ) -> Result<Vec<StickyNote>, String> {
+        let guard = self.inner.lock().map_err(|_| "Lock poisoned".to_string())?;
+        let media_dir = Self::public_media_dir(&guard.data_dir);
+        fs::create_dir_all(&media_dir).map_err(|e| format!("Create media dir failed: {e}"))?;
+
+        let mut store = Self::load_public_store(&guard.data_dir)?;
+        let note = store
+            .notes
+            .iter_mut()
+            .find(|n| n.id == note_id)
+            .ok_or_else(|| "Nota não encontrada.".to_string())?;
+
+        for raw in paths {
+            let p = PathBuf::from(&raw);
+            if !p.is_file() {
+                continue;
+            }
+            let name = p
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("arquivo")
+                .to_string();
+            let safe = sanitize_filename(&name);
+            let id = Uuid::new_v4().to_string();
+            let stored_name = format!("{id}_{safe}");
+            let dest = media_dir.join(&stored_name);
+            fs::copy(&p, &dest).map_err(|e| format!("Falha ao anexar arquivo: {e}"))?;
+            let size_bytes = fs::metadata(&dest).map(|m| m.len()).unwrap_or(0);
+            let mime_type = mime_guess::from_path(&p)
+                .first_or_octet_stream()
+                .essence_str()
+                .to_string();
+            let kind = classify_mime(&mime_type, &name);
+
+            note.attachments.push(NoteAttachment {
+                id,
+                name,
+                mime_type,
+                kind,
+                size_bytes,
+                stored_name,
+            });
+        }
+        note.updated_at = Utc::now().to_rfc3339();
+        Self::save_public_store(&guard.data_dir, &store)?;
+        Ok(store.notes)
+    }
+
+    pub fn remove_public_attachment(
+        &self,
+        note_id: &str,
+        attachment_id: &str,
+    ) -> Result<Vec<StickyNote>, String> {
+        let guard = self.inner.lock().map_err(|_| "Lock poisoned".to_string())?;
+        let mut store = Self::load_public_store(&guard.data_dir)?;
+        if let Some(note) = store.notes.iter_mut().find(|n| n.id == note_id) {
+            if let Some(pos) = note.attachments.iter().position(|a| a.id == attachment_id) {
+                let removed = note.attachments.remove(pos);
+                let path = Self::public_media_dir(&guard.data_dir).join(sanitize_filename(&removed.stored_name));
+                if path.exists() {
+                    let _ = fs::remove_file(&path);
+                }
+            }
+            note.updated_at = Utc::now().to_rfc3339();
+            Self::save_public_store(&guard.data_dir, &store)?;
+        }
+        Ok(store.notes)
+    }
+
+    pub fn export_public_attachment(
+        &self,
+        stored_name: &str,
+        original_name: &str,
+        dest_dir: &str,
+    ) -> Result<String, String> {
+        let guard = self.inner.lock().map_err(|_| "Lock poisoned".to_string())?;
+        let src = Self::public_media_dir(&guard.data_dir).join(sanitize_filename(stored_name));
+        if !src.is_file() {
+            return Err("Arquivo anexo não encontrado.".to_string());
+        }
+        let dest = PathBuf::from(dest_dir).join(sanitize_filename(original_name));
+        fs::copy(&src, &dest).map_err(|e| format!("Falha ao exportar anexo: {e}"))?;
+        Ok(dest.to_string_lossy().to_string())
+    }
 }
 
-fn sanitize_filename(name: &str) -> String {
+#[cfg(target_os = "windows")]
+pub fn apply_vault_fs_protection(vault_dir: &Path, protect_exe: bool) {
+    use std::os::windows::ffi::OsStrExt;
+    use std::os::windows::process::CommandExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        SetFileAttributesW, FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_SYSTEM,
+    };
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+    if vault_dir.exists() {
+        let wide: Vec<u16> = vault_dir
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        unsafe {
+            SetFileAttributesW(wide.as_ptr(), FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM);
+        }
+        let _ = std::process::Command::new("icacls")
+            .args([
+                &vault_dir.to_string_lossy().to_string(),
+                "/deny",
+                "*S-1-1-0:(DE)",
+            ])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+    }
+
+    if protect_exe && !cfg!(test) {
+        if let Ok(exe) = std::env::current_exe() {
+            let exe_str = exe.to_string_lossy().to_string();
+            if !exe_str.contains("\\target\\debug\\build\\") {
+                let _ = std::process::Command::new("icacls")
+                    .args([&exe_str, "/deny", "*S-1-1-0:(DE)"])
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .output();
+            }
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn apply_vault_fs_protection(_vault_dir: &Path, _protect_exe: bool) {}
+
+#[cfg(target_os = "windows")]
+pub fn remove_vault_fs_protection(vault_dir: &Path, unprotect_exe: bool) {
+    use std::os::windows::ffi::OsStrExt;
+    use std::os::windows::process::CommandExt;
+    use windows_sys::Win32::Storage::FileSystem::{SetFileAttributesW, FILE_ATTRIBUTE_NORMAL};
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+    if vault_dir.exists() {
+        let _ = std::process::Command::new("icacls")
+            .args([
+                &vault_dir.to_string_lossy().to_string(),
+                "/remove:d",
+                "*S-1-1-0",
+            ])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        let wide: Vec<u16> = vault_dir
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        unsafe {
+            SetFileAttributesW(wide.as_ptr(), FILE_ATTRIBUTE_NORMAL);
+        }
+    }
+
+    if unprotect_exe && !cfg!(test) {
+        if let Ok(exe) = std::env::current_exe() {
+            let exe_str = exe.to_string_lossy().to_string();
+            if !exe_str.contains("\\target\\debug\\build\\") {
+                let _ = std::process::Command::new("icacls")
+                    .args([&exe_str, "/remove:d", "*S-1-1-0"])
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .output();
+            }
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn remove_vault_fs_protection(_vault_dir: &Path, _unprotect_exe: bool) {}
+
+pub fn sanitize_filename(name: &str) -> String {
     let cleaned: String = name
         .chars()
         .map(|c| match c {

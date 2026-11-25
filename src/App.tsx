@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getVersion } from "@tauri-apps/api/app";
 import { emit, listen } from "@tauri-apps/api/event";
+import { open } from "@tauri-apps/plugin-dialog";
 import {
   AlertTriangle,
   EyeOff,
@@ -23,6 +24,7 @@ import { getStrings } from "./i18n";
 import { htmlToPlainText } from "./utils/richText";
 import type {
   AppPreferences,
+  NoteAttachment,
   StickyNote,
   VaultManifest,
   VaultStatus,
@@ -54,6 +56,8 @@ function makeEmptyNote(isChecklist = false, color: StickyNote["color"] = "indigo
     is_checklist: isChecklist,
     checklist: isChecklist ? [{ id: crypto.randomUUID(), text: "", checked: false }] : [],
     pinned: false,
+    desktop_widget: false,
+    attachments: [],
     created_at: now,
     updated_at: now,
   };
@@ -93,7 +97,7 @@ export const App: React.FC = () => {
   const [quickUnlockError, setQuickUnlockError] = useState<string | null>(null);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [detachedIds, setDetachedIds] = useState<string[]>([]);
-  const [appVersion, setAppVersion] = useState("1.9.0");
+  const [appVersion, setAppVersion] = useState("2.0.0");
   const [storeLoaded, setStoreLoaded] = useState(false);
   const [banner, setBanner] = useState<{ text: string; isError?: boolean } | null>(null);
   const t = getStrings(preferences.language);
@@ -134,6 +138,7 @@ export const App: React.FC = () => {
     let unlistenNoteDeleted: (() => void) | undefined;
     let unlistenPopoutClosed: (() => void) | undefined;
     let unlistenVaultUnlocked: (() => void) | undefined;
+    let unlistenOpenSettings: (() => void) | undefined;
     let unlistenCloseReq: (() => void) | undefined;
 
     (async () => {
@@ -165,6 +170,10 @@ export const App: React.FC = () => {
 
       unlistenVaultUnlocked = await listen("vault-unlocked", async () => {
         await loadVaultSession();
+      });
+
+      unlistenOpenSettings = await listen("open-settings-danger", () => {
+        setShowSettings(true);
       });
 
       unlistenPopoutClosed = await listen<string>("note-popout-closed", (ev) => {
@@ -218,6 +227,7 @@ export const App: React.FC = () => {
       if (unlistenNoteDeleted) unlistenNoteDeleted();
       if (unlistenPopoutClosed) unlistenPopoutClosed();
       if (unlistenVaultUnlocked) unlistenVaultUnlocked();
+      if (unlistenOpenSettings) unlistenOpenSettings();
       if (unlistenCloseReq) unlistenCloseReq();
     };
   }, [flashBanner, loadVaultSession, popoutParams]);
@@ -400,6 +410,7 @@ export const App: React.FC = () => {
         screenX ?? null,
         screenY ?? null,
         note.pinned,
+        Boolean(note.desktop_widget),
         preferences.theme
       );
     } catch (err) {
@@ -428,6 +439,7 @@ export const App: React.FC = () => {
           null,
           null,
           true,
+          false,
           preferences.theme
         );
         await api.setNoteWindowPinned(updated.id, isVaultView, true);
@@ -436,6 +448,95 @@ export const App: React.FC = () => {
         await api.setNoteWindowPinned(updated.id, isVaultView, false);
         await api.closeNoteWindow(updated.id, isVaultView);
       }
+    } catch (err) {
+      flashBanner(String(err), true);
+    }
+  };
+
+  const handleToggleDesktopWidget = async (updated: StickyNote) => {
+    try {
+      if (isVaultView && vaultManifest) {
+        await api.saveVaultNotes(
+          vaultManifest.notes.map((n) => (n.id === updated.id ? updated : n))
+        );
+      } else {
+        await api.savePublicNotes(
+          publicNotes.map((n) => (n.id === updated.id ? updated : n))
+        );
+      }
+      if (updated.desktop_widget) {
+        setDetachedIds((prev) =>
+          prev.includes(updated.id) ? prev : [...prev, updated.id]
+        );
+        await api.openNoteWindow(
+          updated.id,
+          isVaultView,
+          null,
+          null,
+          false,
+          true,
+          preferences.theme
+        );
+        await api.setNoteWindowDesktopWidget(updated.id, isVaultView, true);
+      } else {
+        setDetachedIds((prev) => prev.filter((id) => id !== updated.id));
+        await api.setNoteWindowDesktopWidget(updated.id, isVaultView, false);
+        await api.closeNoteWindow(updated.id, isVaultView);
+      }
+    } catch (err) {
+      flashBanner(String(err), true);
+    }
+  };
+
+  const handleAttachFiles = async (noteId: string) => {
+    if (isVaultView) return;
+    try {
+      const selected = await open({ multiple: true });
+      if (!selected) return;
+      const paths = Array.isArray(selected) ? selected : [selected];
+      if (publicSaveTimerRef.current) {
+        window.clearTimeout(publicSaveTimerRef.current);
+        publicSaveTimerRef.current = null;
+      }
+      const nextNotes = await api.attachPublicFiles(noteId, paths);
+      setPublicNotes(nextNotes);
+      const updated = nextNotes.find((n) => n.id === noteId);
+      if (updated) {
+        emit("note-sync", { note: updated, isVault: false }).catch(() => {});
+      }
+    } catch (err) {
+      flashBanner(String(err), true);
+    }
+  };
+
+  const handleRemoveAttachment = async (noteId: string, attachmentId: string) => {
+    if (isVaultView) return;
+    try {
+      if (publicSaveTimerRef.current) {
+        window.clearTimeout(publicSaveTimerRef.current);
+        publicSaveTimerRef.current = null;
+      }
+      const nextNotes = await api.removePublicAttachment(noteId, attachmentId);
+      setPublicNotes(nextNotes);
+      const updated = nextNotes.find((n) => n.id === noteId);
+      if (updated) {
+        emit("note-sync", { note: updated, isVault: false }).catch(() => {});
+      }
+    } catch (err) {
+      flashBanner(String(err), true);
+    }
+  };
+
+  const handleExportAttachment = async (att: NoteAttachment) => {
+    try {
+      const dir = await open({ directory: true, multiple: false });
+      if (!dir || Array.isArray(dir)) return;
+      const dest = await api.exportPublicAttachment(
+        att.stored_name,
+        att.name,
+        dir
+      );
+      flashBanner(dest);
     } catch (err) {
       flashBanner(String(err), true);
     }
@@ -572,6 +673,10 @@ export const App: React.FC = () => {
             onChange={updateNote}
             onDelete={deleteNote}
             onTogglePin={handleTogglePin}
+            onToggleDesktopWidget={handleToggleDesktopWidget}
+            onAttachFiles={!isVaultView ? handleAttachFiles : undefined}
+            onRemoveAttachment={!isVaultView ? handleRemoveAttachment : undefined}
+            onExportAttachment={!isVaultView ? handleExportAttachment : undefined}
             onPopout={handlePopoutNote}
             onStealthCandidate={!isVaultView ? handleStealthCandidate : undefined}
           />

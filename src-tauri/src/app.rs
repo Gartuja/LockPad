@@ -13,6 +13,7 @@ struct AppRuntime {
     screen_protect_pref: AtomicBool,
     uninstall_gate_mode: bool,
     pinned_overlays: Mutex<HashSet<String>>,
+    desktop_widgets: Mutex<HashSet<String>>,
 }
 
 #[cfg(target_os = "windows")]
@@ -40,6 +41,90 @@ fn ensure_overlay_visible(window: &tauri::WebviewWindow) {
         }
     }
 }
+
+#[cfg(target_os = "windows")]
+fn apply_desktop_widget_mode(window: &tauri::WebviewWindow, enable: bool) {
+    use windows_sys::Win32::Foundation::HWND;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        FindWindowW, SetWindowLongPtrW, SetWindowPos, GWLP_HWNDPARENT, HWND_BOTTOM,
+        HWND_NOTOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    };
+    if let Ok(hwnd) = window.hwnd() {
+        let h = hwnd.0 as HWND;
+        unsafe {
+            if enable {
+                let progman_cls: [u16; 8] = [
+                    b'P' as u16,
+                    b'r' as u16,
+                    b'o' as u16,
+                    b'g' as u16,
+                    b'm' as u16,
+                    b'a' as u16,
+                    b'n' as u16,
+                    0,
+                ];
+                let progman = FindWindowW(progman_cls.as_ptr(), std::ptr::null());
+                if !progman.is_null() {
+                    SetWindowLongPtrW(h, GWLP_HWNDPARENT, progman as _);
+                }
+                SetWindowPos(
+                    h,
+                    HWND_BOTTOM,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                );
+            } else {
+                SetWindowLongPtrW(h, GWLP_HWNDPARENT, 0);
+                SetWindowPos(
+                    h,
+                    HWND_NOTOPMOST,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                );
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn ensure_desktop_widget_visible(window: &tauri::WebviewWindow) {
+    use windows_sys::Win32::Foundation::HWND;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetForegroundWindow, IsIconic, SetWindowPos, ShowWindow, HWND_BOTTOM, SWP_NOACTIVATE,
+        SWP_NOMOVE, SWP_NOSIZE, SW_SHOWNOACTIVATE,
+    };
+    if let Ok(hwnd) = window.hwnd() {
+        let h = hwnd.0 as HWND;
+        unsafe {
+            if IsIconic(h) != 0 {
+                ShowWindow(h, SW_SHOWNOACTIVATE);
+            }
+            if GetForegroundWindow() != h {
+                SetWindowPos(
+                    h,
+                    HWND_BOTTOM,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                );
+            }
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn apply_desktop_widget_mode(_window: &tauri::WebviewWindow, _enable: bool) {}
+
+#[cfg(not(target_os = "windows"))]
+fn ensure_desktop_widget_visible(_window: &tauri::WebviewWindow) {}
 
 #[cfg(target_os = "windows")]
 fn is_desktop_foreground() -> bool {
@@ -152,6 +237,25 @@ fn save_public_notes(
         .lock()
         .map_err(|_| "Lock poisoned".to_string())?;
     let mut store = VaultManager::load_public_store(&guard.data_dir)?;
+    let referenced: HashSet<String> = notes
+        .iter()
+        .flat_map(|n| n.attachments.iter().map(|a| a.stored_name.clone()))
+        .collect();
+    let media_dir = VaultManager::public_media_dir(&guard.data_dir);
+    if media_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(&media_dir) {
+            for ent in entries.flatten() {
+                let p = ent.path();
+                if p.is_file() {
+                    if let Some(name) = p.file_name().and_then(|s| s.to_str()) {
+                        if !referenced.contains(name) {
+                            let _ = std::fs::remove_file(&p);
+                        }
+                    }
+                }
+            }
+        }
+    }
     store.notes = notes;
     VaultManager::save_public_store(&guard.data_dir, &store)
 }
@@ -292,6 +396,7 @@ async fn open_note_window(
     x: Option<f64>,
     y: Option<f64>,
     pinned: bool,
+    desktop_widget: bool,
     theme: String,
     state: State<'_, Arc<AppRuntime>>,
 ) -> Result<(), String> {
@@ -302,6 +407,7 @@ async fn open_note_window(
         }
     }
 
+    let pinned = pinned && !desktop_widget;
     let prefix = if is_vault { "note-vault-" } else { "note-pub-" };
     let safe_id: String = note_id
         .chars()
@@ -311,6 +417,8 @@ async fn open_note_window(
 
     if let Some(existing) = app.get_webview_window(&label) {
         let _ = existing.set_always_on_top(pinned);
+        let _ = existing.set_skip_taskbar(pinned || desktop_widget);
+        apply_desktop_widget_mode(&existing, desktop_widget);
         let _ = existing.unminimize();
         let _ = existing.set_focus();
         return Ok(());
@@ -339,7 +447,7 @@ async fn open_note_window(
             .decorations(false)
             .transparent(false)
             .shadow(true)
-            .skip_taskbar(pinned)
+            .skip_taskbar(pinned || desktop_widget)
             .background_color(bg)
             .always_on_top(pinned);
 
@@ -356,6 +464,12 @@ async fn open_note_window(
             overlays.insert(label.clone());
         }
         ensure_overlay_visible(&win);
+    } else if desktop_widget {
+        if let Ok(mut widgets) = state.desktop_widgets.lock() {
+            widgets.insert(label.clone());
+        }
+        apply_desktop_widget_mode(&win, true);
+        ensure_desktop_widget_visible(&win);
     }
 
     let app_for_event = app.clone();
@@ -366,6 +480,9 @@ async fn open_note_window(
             let rt = app_for_event.state::<Arc<AppRuntime>>();
             if let Ok(mut overlays) = rt.pinned_overlays.lock() {
                 overlays.remove(&label_for_event);
+            }
+            if let Ok(mut widgets) = rt.desktop_widgets.lock() {
+                widgets.remove(&label_for_event);
             }
             let _ = app_for_event.emit("note-popout-closed", &note_id_for_event);
         }
@@ -399,12 +516,60 @@ fn set_note_window_pinned(
             overlays.remove(&label);
         }
     }
+    if pinned {
+        if let Ok(mut widgets) = state.desktop_widgets.lock() {
+            widgets.remove(&label);
+        }
+    }
     if let Some(win) = app.get_webview_window(&label) {
+        if pinned {
+            apply_desktop_widget_mode(&win, false);
+        }
         let _ = win.set_skip_taskbar(pinned);
         win.set_always_on_top(pinned)
             .map_err(|e| format!("Failed to set always on top: {e}"))?;
         if pinned {
             ensure_overlay_visible(&win);
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn set_note_window_desktop_widget(
+    app: AppHandle,
+    note_id: String,
+    is_vault: bool,
+    desktop_widget: bool,
+    state: State<Arc<AppRuntime>>,
+) -> Result<(), String> {
+    let prefix = if is_vault { "note-vault-" } else { "note-pub-" };
+    let safe_id: String = note_id
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+        .collect();
+    let label = format!("{prefix}{safe_id}");
+    if let Ok(mut widgets) = state.desktop_widgets.lock() {
+        if desktop_widget {
+            widgets.insert(label.clone());
+        } else {
+            widgets.remove(&label);
+        }
+    }
+    if desktop_widget {
+        if let Ok(mut overlays) = state.pinned_overlays.lock() {
+            overlays.remove(&label);
+        }
+    }
+    if let Some(win) = app.get_webview_window(&label) {
+        if desktop_widget {
+            let _ = win.set_always_on_top(false);
+            let _ = win.set_skip_taskbar(true);
+            apply_desktop_widget_mode(&win, true);
+            ensure_desktop_widget_visible(&win);
+        } else {
+            apply_desktop_widget_mode(&win, false);
+            let _ = win.set_skip_taskbar(false);
         }
     }
     Ok(())
@@ -527,6 +692,36 @@ fn export_vault_folder(
 }
 
 #[tauri::command]
+fn attach_public_files(
+    note_id: String,
+    paths: Vec<String>,
+    state: State<Arc<AppRuntime>>,
+) -> Result<Vec<StickyNote>, String> {
+    state.vault.attach_public_files(&note_id, paths)
+}
+
+#[tauri::command]
+fn remove_public_attachment(
+    note_id: String,
+    attachment_id: String,
+    state: State<Arc<AppRuntime>>,
+) -> Result<Vec<StickyNote>, String> {
+    state.vault.remove_public_attachment(&note_id, &attachment_id)
+}
+
+#[tauri::command]
+fn export_public_attachment(
+    stored_name: String,
+    original_name: String,
+    dest_dir: String,
+    state: State<Arc<AppRuntime>>,
+) -> Result<String, String> {
+    state
+        .vault
+        .export_public_attachment(&stored_name, &original_name, &dest_dir)
+}
+
+#[tauri::command]
 fn verify_and_destroy_vault(
     app: AppHandle,
     passphrase: String,
@@ -541,6 +736,9 @@ fn verify_and_destroy_vault(
     close_vault_popouts(&app);
     if let Ok(mut overlays) = state.pinned_overlays.lock() {
         overlays.retain(|l| !l.starts_with("note-vault-"));
+    }
+    if let Ok(mut widgets) = state.desktop_widgets.lock() {
+        widgets.retain(|l| !l.starts_with("note-vault-"));
     }
     sync_screen_protection(&app, &state);
     Ok(())
@@ -719,6 +917,97 @@ pub fn run() {
                     .unwrap(),
             }
         })
+        .register_uri_scheme_protocol("pubmedia", |ctx, request| {
+            use std::io::{Read, Seek, SeekFrom};
+            let app = ctx.app_handle();
+            let runtime = app.state::<Arc<AppRuntime>>();
+
+            let path = request.uri().path();
+            let raw_name = path.trim_start_matches('/').strip_prefix("blob/").unwrap_or("");
+            if raw_name.is_empty() {
+                return tauri::http::Response::builder()
+                    .status(404)
+                    .body(b"Not found".to_vec())
+                    .unwrap();
+            }
+            let safe_name = crate::vault::sanitize_filename(raw_name);
+            let data_dir = match runtime.vault.inner.lock() {
+                Ok(g) => g.data_dir.clone(),
+                Err(_) => {
+                    return tauri::http::Response::builder()
+                        .status(500)
+                        .body(Vec::new())
+                        .unwrap();
+                }
+            };
+            let file_path = VaultManager::public_media_dir(&data_dir).join(&safe_name);
+            let mut f = match std::fs::File::open(&file_path) {
+                Ok(f) => f,
+                Err(_) => {
+                    return tauri::http::Response::builder()
+                        .status(404)
+                        .body(b"Not found".to_vec())
+                        .unwrap();
+                }
+            };
+            let total = f.metadata().map(|m| m.len()).unwrap_or(0);
+            let mime = mime_guess::from_path(&file_path)
+                .first_or_octet_stream()
+                .essence_str()
+                .to_string();
+
+            if total == 0 {
+                return tauri::http::Response::builder()
+                    .status(200)
+                    .header("Content-Type", mime)
+                    .header("Accept-Ranges", "bytes")
+                    .body(Vec::new())
+                    .unwrap();
+            }
+
+            let range_hdr = request
+                .headers()
+                .get("range")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string());
+
+            if let Some(rh) = range_hdr {
+                if let Some((start, end)) = parse_range_header(&rh, total) {
+                    let len = (end - start + 1) as usize;
+                    let mut buf = vec![0u8; len];
+                    if f.seek(SeekFrom::Start(start)).is_ok() && f.read_exact(&mut buf).is_ok() {
+                        return tauri::http::Response::builder()
+                            .status(206)
+                            .header("Content-Type", mime)
+                            .header("Content-Length", buf.len().to_string())
+                            .header("Content-Range", format!("bytes {start}-{end}/{total}"))
+                            .header("Accept-Ranges", "bytes")
+                            .body(buf)
+                            .unwrap();
+                    }
+                }
+                return tauri::http::Response::builder()
+                    .status(416)
+                    .header("Content-Range", format!("bytes */{total}"))
+                    .body(Vec::new())
+                    .unwrap();
+            }
+
+            let mut buf = Vec::with_capacity(total as usize);
+            match f.read_to_end(&mut buf) {
+                Ok(_) => tauri::http::Response::builder()
+                    .status(200)
+                    .header("Content-Type", mime)
+                    .header("Content-Length", buf.len().to_string())
+                    .header("Accept-Ranges", "bytes")
+                    .body(buf)
+                    .unwrap(),
+                Err(_) => tauri::http::Response::builder()
+                    .status(500)
+                    .body(Vec::new())
+                    .unwrap(),
+            }
+        })
         .setup(move |app| {
             let data_dir = app
                 .path()
@@ -737,6 +1026,7 @@ pub fn run() {
                 screen_protect_pref: AtomicBool::new(prefs.screen_protect),
                 uninstall_gate_mode,
                 pinned_overlays: Mutex::new(HashSet::new()),
+                desktop_widgets: Mutex::new(HashSet::new()),
             });
 
             if uninstall_gate_mode {
@@ -763,10 +1053,15 @@ pub fn run() {
 
                 let show_item = MenuItemBuilder::with_id("tray_show", "Abrir LockPad")
                     .build(app)?;
+                let unlock_item = MenuItemBuilder::with_id(
+                    "tray_unlock_delete",
+                    "Desbloquear / Excluir LockPad...",
+                )
+                .build(app)?;
                 let quit_item = MenuItemBuilder::with_id("tray_quit", "Sair do LockPad")
                     .build(app)?;
                 let tray_menu = MenuBuilder::new(app)
-                    .items(&[&show_item, &quit_item])
+                    .items(&[&show_item, &unlock_item, &quit_item])
                     .build()?;
 
                 let mut tray_builder = TrayIconBuilder::new()
@@ -780,6 +1075,14 @@ pub fn run() {
                                 let _ = win.unminimize();
                                 let _ = win.set_focus();
                             }
+                        }
+                        "tray_unlock_delete" => {
+                            if let Some(win) = app.get_webview_window("main") {
+                                let _ = win.show();
+                                let _ = win.unminimize();
+                                let _ = win.set_focus();
+                            }
+                            let _ = app.emit("open-settings-danger", ());
                         }
                         "tray_quit" => {
                             let state = app.state::<Arc<AppRuntime>>();
@@ -830,6 +1133,20 @@ pub fn run() {
                         for label in &overlay_labels {
                             if let Some(win) = handle.get_webview_window(label) {
                                 ensure_overlay_visible(&win);
+                            }
+                        }
+                    }
+
+                    // Keep Rainmeter-style desktop widget notes pinned to desktop behind other windows
+                    let widget_labels: Vec<String> = runtime_bg
+                        .desktop_widgets
+                        .lock()
+                        .map(|s| s.iter().cloned().collect())
+                        .unwrap_or_default();
+                    if !widget_labels.is_empty() {
+                        for label in &widget_labels {
+                            if let Some(win) = handle.get_webview_window(label) {
+                                ensure_desktop_widget_visible(&win);
                             }
                         }
                     }
@@ -893,7 +1210,11 @@ pub fn run() {
             exit_app,
             open_note_window,
             set_note_window_pinned,
+            set_note_window_desktop_widget,
             close_note_window,
+            attach_public_files,
+            remove_public_attachment,
+            export_public_attachment,
             check_for_updates,
             install_github_update,
         ])

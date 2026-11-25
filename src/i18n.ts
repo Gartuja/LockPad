@@ -58,6 +58,12 @@ const pt = {
   popoutTip: "Soltar nota na área de trabalho",
   pinTip: "Fixar como overlay na tela (sempre visível)",
   unpinTip: "Desafixar overlay da tela",
+  desktopWidgetTip: "Fixar somente na área de trabalho (estilo widget)",
+  unwidgetTip: "Desativar modo área de trabalho",
+  attachFileTip: "Anexar imagens, vídeos, GIFs, áudios ou arquivos",
+  attachmentsTitle: "Anexos",
+  removeAttachmentTip: "Remover anexo",
+  exportAttachmentTip: "Salvar cópia do anexo",
   deleteNoteTip: "Excluir nota",
   closePopoutTip: "Fechar nota flutuante",
 
@@ -102,7 +108,7 @@ const pt = {
   passMismatch: "As frases-chave não coincidem.",
   dangerZoneTitle: "Exclusão Protegida do Cofre",
   dangerZoneDesc:
-    "O cofre e o aplicativo não podem ser apagados sem digitar sua frase-chave e confirmar que todos os dados serão destruídos.",
+    "O cofre, a pasta criptografada e o executável portátil são protegidos contra exclusão. Digite sua frase-chave (ou chave de 24 caracteres) para remover a trava e apagar os dados.",
   confirmDestroyPlaceholder: 'Digite "APAGAR TUDO" para confirmar',
   confirmDestroyCheck:
     "Confirmo que todas as notas secretas, imagens, vídeos e pastas serão apagados permanentemente.",
@@ -213,6 +219,12 @@ const en: I18nStrings = {
   popoutTip: "Detach note to desktop",
   pinTip: "Pin as always-on-top overlay",
   unpinTip: "Unpin overlay from screen",
+  desktopWidgetTip: "Pin only to desktop (widget mode)",
+  unwidgetTip: "Exit desktop widget mode",
+  attachFileTip: "Attach images, videos, GIFs, audio, or files",
+  attachmentsTitle: "Attachments",
+  removeAttachmentTip: "Remove attachment",
+  exportAttachmentTip: "Save attachment copy",
   deleteNoteTip: "Delete note",
   closePopoutTip: "Close floating note",
 
@@ -256,7 +268,7 @@ const en: I18nStrings = {
   passMismatch: "Passphrases do not match.",
   dangerZoneTitle: "Protected Vault Deletion",
   dangerZoneDesc:
-    "The vault and app cannot be erased without entering your passphrase and confirming permanent data destruction.",
+    "The vault, encrypted folder, and portable executable are protected against deletion. Enter your passphrase (or 24-char recovery key) to unlock and destroy data.",
   confirmDestroyPlaceholder: 'Type "APAGAR TUDO" to confirm',
   confirmDestroyCheck:
     "I confirm all secret notes, images, videos, and folders will be permanently deleted.",
@@ -362,6 +374,12 @@ const es: I18nStrings = {
   popoutTip: "Soltar nota en el escritorio",
   pinTip: "Fijar como overlay en pantalla (siempre visible)",
   unpinTip: "Desfijar overlay de la pantalla",
+  desktopWidgetTip: "Fijar solo en el escritorio (modo widget)",
+  unwidgetTip: "Salir del modo escritorio",
+  attachFileTip: "Adjuntar imágenes, videos, GIFs, audios o archivos",
+  attachmentsTitle: "Adjuntos",
+  removeAttachmentTip: "Quitar adjunto",
+  exportAttachmentTip: "Guardar copia del adjunto",
   deleteNoteTip: "Eliminar nota",
   closePopoutTip: "Cerrar nota flotante",
 
@@ -405,7 +423,7 @@ const es: I18nStrings = {
   passMismatch: "Las frases clave no coinciden.",
   dangerZoneTitle: "Eliminación Protegida de Bóveda",
   dangerZoneDesc:
-    "La bóveda y la aplicación no pueden borrarse sin escribir tu frase clave y confirmar la destrucción permanente.",
+    "La bóveda, la carpeta cifrada y el ejecutable portátil están protegidos contra borrado. Ingresa tu frase clave (o clave de 24 caracteres) para desbloquear y destruir.",
   confirmDestroyPlaceholder: 'Escribe "APAGAR TUDO" para confirmar',
   confirmDestroyCheck:
     "Confirmo que todas las notas secretas, imágenes, videos y carpetas se borrarán permanentemente.",

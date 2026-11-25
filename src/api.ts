@@ -71,6 +71,7 @@ export const api = {
     x: number | null,
     y: number | null,
     pinned: boolean,
+    desktopWidget: boolean,
     theme: string
   ) =>
     invoke<void>("open_note_window", {
@@ -79,12 +80,37 @@ export const api = {
       x,
       y,
       pinned,
+      desktopWidget,
       theme,
     }),
   setNoteWindowPinned: (noteId: string, isVault: boolean, pinned: boolean) =>
     invoke<void>("set_note_window_pinned", { noteId, isVault, pinned }),
+  setNoteWindowDesktopWidget: (
+    noteId: string,
+    isVault: boolean,
+    desktopWidget: boolean
+  ) =>
+    invoke<void>("set_note_window_desktop_widget", {
+      noteId,
+      isVault,
+      desktopWidget,
+    }),
   closeNoteWindow: (noteId: string, isVault: boolean) =>
     invoke<void>("close_note_window", { noteId, isVault }),
+  attachPublicFiles: (noteId: string, paths: string[]) =>
+    invoke<StickyNote[]>("attach_public_files", { noteId, paths }),
+  removePublicAttachment: (noteId: string, attachmentId: string) =>
+    invoke<StickyNote[]>("remove_public_attachment", { noteId, attachmentId }),
+  exportPublicAttachment: (
+    storedName: string,
+    originalName: string,
+    destDir: string
+  ) =>
+    invoke<string>("export_public_attachment", {
+      storedName,
+      originalName,
+      destDir,
+    }),
   checkForUpdates: () => invoke<UpdateCheckResult>("check_for_updates"),
   installGithubUpdate: (downloadUrl: string) =>
     invoke<string>("install_github_update", { downloadUrl }),
@@ -93,6 +119,10 @@ export const api = {
 export function vaultBlobUrl(fileId: string): string {
   // convertFileSrc handles Windows http://vault.localhost vs vault:// scheme cleanly across Tauri v2
   return convertFileSrc(`blob/${fileId}`, "vault");
+}
+
+export function pubmediaUrl(storedName: string): string {
+  return convertFileSrc(`blob/${storedName}`, "pubmedia");
 }
 
 export function formatBytes(bytes: number): string {
