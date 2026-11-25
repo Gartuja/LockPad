@@ -1,0 +1,92 @@
+name: Build & Publish Linux Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and attach Linux artifacts to (e.g. v2.0.1)"
+        required: true
+        default: "v2.0.1"
+        type: string
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Setup Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            src-tauri/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+
+      - name: Install Linux Tauri dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            libxdo-dev \
+            zip
+
+      - name: Install npm dependencies & test Rust
+        run: |
+          npm ci
+          cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Build Tauri Linux bundles (.deb & .AppImage)
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+          NO_STRIP: "true"
+        run: npx tauri build --bundles deb,appimage
+
+      - name: Prepare & Upload Linux release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p linux_stage out_assets
+          cp src-tauri/target/release/lockpad linux_stage/lockpad
+          cp installers/linux/install.sh linux_stage/install.sh
+          cp installers/linux/uninstall.sh linux_stage/uninstall.sh
+          cp src-tauri/icons/icon.png linux_stage/icon.png
+          chmod +x linux_stage/lockpad linux_stage/install.sh linux_stage/uninstall.sh
+          (cd linux_stage && zip -r "../out_assets/LockPad-${TAG}-linux-x64.zip" .)
+
+          find src-tauri/target/release/bundle/deb -name "*.deb" -exec cp {} out_assets/ \;
+          find src-tauri/target/release/bundle/appimage -name "*.AppImage" -exec cp {} out_assets/ \;
+
+          ls -lh out_assets/
+
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "LockPad ${TAG}" --notes "Automated Linux build for ${TAG}"
+          fi
+          gh release upload "$TAG" out_assets/* --clobber
