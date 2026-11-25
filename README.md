@@ -31,9 +31,6 @@
   - **Authenticated Encryption**: **XChaCha20-Poly1305** with unique 192-bit nonces and Associated Authenticated Data (AAD) for `vault.meta`, `manifest.enc`, and every file chunk.
   - **Memory Hygiene**: Keys and plaintext passphrases are wrapped in `Zeroizing` and wiped from RAM when locking (`Ctrl+Shift+L`), on auto-lock timeout, or on exit.
   - **Brute-Force Resistance**: Exponential lockout delays after repeated failed explicit attempts plus rate-limiting on the stealth trigger.
-- **Encrypted Media, Videos & Nested Folders**:
-  - **In-Memory Media Streaming**
-- **Screen-Capture Protection**
 
 ## Building from Source
 
