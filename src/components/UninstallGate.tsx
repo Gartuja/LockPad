@@ -1,6 +1,8 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { AlertTriangle, Lock, ShieldAlert, Trash2 } from "lucide-react";
 import { api } from "../api";
+import { getStrings } from "../i18n";
+import type { Language } from "../types";
 
 export const UninstallGate: React.FC = () => {
   const [passphrase, setPassphrase] = useState("");
@@ -8,12 +10,24 @@ export const UninstallGate: React.FC = () => {
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [lang, setLang] = useState<Language>("pt");
+
+  useEffect(() => {
+    api
+      .getPublicStore()
+      .then((s) => {
+        if (s.preferences.language) setLang(s.preferences.language);
+      })
+      .catch(() => {});
+  }, []);
+
+  const t = getStrings(lang);
 
   const handleConfirmUninstall = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     if (!confirmed || confirmText.trim().toUpperCase() !== "APAGAR TUDO") {
-      setError('Marque a confirmação e digite "APAGAR TUDO".');
+      setError(t.wipeNeedConfirm);
       return;
     }
     setBusy(true);
@@ -32,12 +46,12 @@ export const UninstallGate: React.FC = () => {
         <div className="modal-header">
           <div className="modal-title" style={{ color: "var(--danger)" }}>
             <ShieldAlert size={18} />
-            Desinstalação Protegida — LockPad
+            {t.uninstallTitle}
           </div>
         </div>
 
         <div style={{ fontSize: 12.5, color: "var(--text-secondary)", lineHeight: 1.5 }}>
-          Existe um cofre criptografado ativo neste computador. Para impedir perda acidental ou remoção não autorizada, o LockPad só pode ser desinstalado após você digitar sua frase-chave e confirmar a exclusão dos dados.
+          {t.uninstallDesc}
         </div>
 
         {error && <div className="alert-banner">{error}</div>}
@@ -45,22 +59,22 @@ export const UninstallGate: React.FC = () => {
         <form onSubmit={handleConfirmUninstall} className="field-group">
           <div className="field-label">
             <Lock size={12} style={{ verticalAlign: "middle", marginRight: 4 }} />
-            Frase-chave do cofre
+            {t.uninstallPassLabel}
           </div>
           <input
             type="password"
             className="field-input"
-            placeholder="Digite sua frase-chave..."
+            placeholder={t.passphrasePlaceholder}
             value={passphrase}
             onChange={(e) => setPassphrase(e.target.value)}
             autoFocus
           />
 
-          <div className="field-label">Confirmação obrigatória</div>
+          <div className="field-label">{t.uninstallConfirmLabel}</div>
           <input
             type="text"
             className="field-input"
-            placeholder='Digite "APAGAR TUDO"'
+            placeholder={t.confirmDestroyPlaceholder}
             value={confirmText}
             onChange={(e) => setConfirmText(e.target.value)}
           />
@@ -73,7 +87,7 @@ export const UninstallGate: React.FC = () => {
             />
             <span>
               <AlertTriangle size={12} style={{ color: "var(--danger)", verticalAlign: "middle", marginRight: 4 }} />
-              Confirmo que todas as notas, imagens, vídeos e pastas criptografadas serão apagadas permanentemente junto com o aplicativo.
+              {t.uninstallCheck}
             </span>
           </label>
 
@@ -85,7 +99,7 @@ export const UninstallGate: React.FC = () => {
               onClick={() => api.completeUninstallGate(false)}
               disabled={busy}
             >
-              Cancelar
+              {t.cancel}
             </button>
             <button
               type="submit"
@@ -98,7 +112,7 @@ export const UninstallGate: React.FC = () => {
                 confirmText.trim().toUpperCase() !== "APAGAR TUDO"
               }
             >
-              <Trash2 size={14} /> Apagar e Desinstalar
+              <Trash2 size={14} /> {t.uninstallConfirmBtn}
             </button>
           </div>
         </form>

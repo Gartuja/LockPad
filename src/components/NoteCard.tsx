@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Check, ExternalLink, GripVertical, Image as ImageIcon, ListTodo, Palette, Pin, Plus, Trash2, Type, X } from "lucide-react";
-import type { NoteColor, StickyNote } from "../types";
+import { getStrings } from "../i18n";
+import type { Language, NoteColor, StickyNote } from "../types";
 
 const FONT_OPTIONS: { id: string; label: string; css: string }[] = [
   { id: "sans", label: "Padrão (Inter / Segoe)", css: '"Inter", "Segoe UI", "Ubuntu", "Noto Sans", system-ui, sans-serif' },
@@ -37,6 +38,7 @@ const COLORS: { id: NoteColor; hex: string }[] = [
 
 interface NoteCardProps {
   note: StickyNote;
+  lang?: Language;
   focused: boolean;
   onFocus: () => void;
   onChange: (updated: StickyNote) => void;
@@ -50,6 +52,7 @@ interface NoteCardProps {
 
 export const NoteCard: React.FC<NoteCardProps> = ({
   note,
+  lang,
   focused,
   onFocus,
   onChange,
@@ -75,6 +78,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
     left: 40,
   });
 
+  const t = getStrings(lang);
   const activeFontSize = Math.min(26, Math.max(11, note.font_size ?? 13));
   const activeFontCss =
     FONT_OPTIONS.find((f) => f.id === (note.font_family ?? "sans"))?.css ??
@@ -289,7 +293,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
         {isPopout ? (
           <span
             className="note-drag-grip"
-            title="Segure e arraste para mover a nota pela área de trabalho"
+            title={t.dragMoveTip}
             onMouseDown={(e) => {
               e.preventDefault();
               getCurrentWindow().startDragging().catch(() => {});
@@ -301,7 +305,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
           onPopout && (
             <span
               className="note-drag-grip"
-              title="Arraste para fora da janela para soltar na área de trabalho"
+              title={t.dragOutTip}
               onMouseDown={handleStartDragOut}
             >
               <GripVertical size={14} />
@@ -310,7 +314,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
         )}
         <input
           className="note-title-input"
-          placeholder="Título da nota..."
+          placeholder={t.noteTitlePlaceholder}
           value={note.title}
           onChange={(e) =>
             onChange({
@@ -323,7 +327,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
         {!isPopout && onPopout && (
           <button
             className="mini-btn"
-            title="Soltar nota na área de trabalho"
+            title={t.popoutTip}
             onClick={(e) => onPopout(note, e.screenX - 150, e.screenY + 20)}
           >
             <ExternalLink size={13} />
@@ -331,11 +335,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
         )}
         <button
           className={`mini-btn ${note.pinned ? "active" : ""}`}
-          title={
-            note.pinned
-              ? "Desafixar overlay da tela"
-              : "Fixar como overlay na tela (sempre visível)"
-          }
+          title={note.pinned ? t.unpinTip : t.pinTip}
           onClick={() => {
             const nextNote = {
               ...note,
@@ -350,7 +350,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
         </button>
         <button
           className="mini-btn"
-          title="Excluir nota"
+          title={t.deleteNoteTip}
           onClick={() => onDelete(note.id)}
         >
           <Trash2 size={13} />
@@ -358,7 +358,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
         {isPopout && onClosePopout && (
           <button
             className="mini-btn"
-            title="Fechar nota flutuante"
+            title={t.closePopoutTip}
             onClick={onClosePopout}
           >
             <X size={14} />
@@ -387,7 +387,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
               <input
                 className={`checklist-input ${item.checked ? "checked" : ""}`}
                 style={{ fontSize: activeFontSize, fontFamily: activeFontCss }}
-                placeholder="Item da lista..."
+                placeholder={t.checklistItemPlaceholder}
                 value={item.text}
                 onChange={(e) => {
                   const next = [...note.checklist];
@@ -444,7 +444,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
               })
             }
           >
-            <Plus size={12} /> Adicionar item
+            <Plus size={12} /> {t.addItem}
           </button>
         </div>
       ) : (
@@ -452,7 +452,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
           ref={textareaRef}
           className="note-textarea"
           style={{ fontSize: activeFontSize, fontFamily: activeFontCss }}
-          placeholder="Escreva sua anotação..."
+          placeholder={t.noteContentPlaceholder}
           value={note.content}
           onChange={(e) => handleContentChange(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -465,28 +465,28 @@ export const NoteCard: React.FC<NoteCardProps> = ({
             <>
               <button
                 className="mini-btn"
-                title="Negrito"
+                title={t.bold}
                 onClick={() => wrapSelection("**", "**")}
               >
                 <strong>B</strong>
               </button>
               <button
                 className="mini-btn"
-                title="Itálico"
+                title={t.italic}
                 onClick={() => wrapSelection("_", "_")}
               >
                 <em>I</em>
               </button>
               <button
                 className="mini-btn"
-                title="Tachado"
+                title={t.strike}
                 onClick={() => wrapSelection("~~", "~~")}
               >
                 <s>S</s>
               </button>
               <button
                 className="mini-btn"
-                title="Sublinhado"
+                title={t.underline}
                 onClick={() => wrapSelection("__", "__")}
               >
                 <u>U</u>
@@ -495,7 +495,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
           )}
           <button
             className="mini-btn"
-            title="Alternar lista de tarefas"
+            title={t.toggleChecklist}
             onClick={toggleChecklistMode}
           >
             <ListTodo size={13} />
@@ -516,7 +516,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
               >
                 <button
                   className="mini-btn"
-                  title="Diminuir letra"
+                  title={t.decreaseFont}
                   onClick={() =>
                     onChange({
                       ...note,
@@ -532,7 +532,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
                 </span>
                 <button
                   className="mini-btn"
-                  title="Aumentar letra"
+                  title={t.increaseFont}
                   onClick={() =>
                     onChange({
                       ...note,
@@ -547,7 +547,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
             )}
             <button
               className={`mini-btn ${note.font_size && note.font_size !== 13 ? "active" : ""}`}
-              title="Tamanho da letra"
+              title={t.fontSizeTip}
               onClick={() => {
                 setPaletteOpen(false);
                 setMediaMenuOpen(false);
@@ -615,7 +615,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
             <button
               ref={fontBtnRef}
               className={`mini-btn ${note.font_family && note.font_family !== "sans" ? "active" : ""}`}
-              title="Escolher fonte do texto"
+              title={t.fontFamilyTip}
               onClick={() => {
                 setPaletteOpen(false);
                 setMediaMenuOpen(false);
@@ -661,7 +661,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
                     fileInputRef.current?.click();
                   }}
                 >
-                  Trocar imagem / GIF
+                  {t.changeBgMedia}
                 </button>
                 <button
                   className="mini-btn"
@@ -675,13 +675,13 @@ export const NoteCard: React.FC<NoteCardProps> = ({
                     setMediaMenuOpen(false);
                   }}
                 >
-                  Remover fundo
+                  {t.removeBgMedia}
                 </button>
               </div>
             )}
             <button
               className={`mini-btn ${note.background_image ? "active" : ""}`}
-              title="Personalizar com imagem (JPEG, PNG) ou GIF"
+              title={t.bgMediaTip}
               onClick={() => {
                 setPaletteOpen(false);
                 setFontSizeOpen(false);
@@ -720,7 +720,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
             )}
             <button
               className="mini-btn"
-              title="Mudar cor da nota"
+              title={t.colorTip}
               onClick={() => {
                 setMediaMenuOpen(false);
                 setFontSizeOpen(false);

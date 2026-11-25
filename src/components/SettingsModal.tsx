@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   Eye,
   EyeOff,
+  Globe,
   KeyRound,
   Lock,
   Moon,
@@ -13,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { api } from "../api";
+import { getStrings, LANGUAGES } from "../i18n";
 import type { AppPreferences, UpdateCheckResult, VaultStatus } from "../types";
 
 interface SettingsModalProps {
@@ -51,6 +53,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
 
+  const t = getStrings(preferences.language);
+
   const handleCheckUpdate = async () => {
     setError(null);
     setSuccess(null);
@@ -59,9 +63,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       const res = await api.checkForUpdates();
       setUpdateInfo(res);
       if (!res.update_available) {
-        setSuccess(`LockPad já está na versão mais recente (v${res.current_version}).`);
+        setSuccess(`${t.upToDate} (v${res.current_version}).`);
       } else if (res.download_url) {
-        setSuccess(`Nova versão v${res.latest_version} encontrada! Baixando e instalando...`);
+        setSuccess(`${t.newVersionFound} (v${res.latest_version})`);
         setBusy(true);
         const msg = await api.installGithubUpdate(res.download_url);
         setSuccess(msg);
@@ -78,11 +82,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setError(null);
     setSuccess(null);
     if (newPass.trim().length < 4) {
-      setError("A frase-chave precisa ter pelo menos 4 caracteres.");
+      setError(t.passTooShort);
       return;
     }
     if (newPass !== confirmPass) {
-      setError("As frases-chave não coincidem.");
+      setError(t.passMismatch);
       return;
     }
     setBusy(true);
@@ -105,7 +109,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setError(null);
     setSuccess(null);
     if (newPass !== confirmPass) {
-      setError("A nova frase-chave e a confirmação não coincidem.");
+      setError(t.passMismatch);
       return;
     }
     setBusy(true);
@@ -114,7 +118,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setCurrentPass("");
       setNewPass("");
       setConfirmPass("");
-      setSuccess("Frase-chave atualizada com novo salt Argon2id.");
+      setSuccess(t.passUpdated);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -145,7 +149,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setError(null);
     setSuccess(null);
     if (!wipeChecked || wipeConfirmText.trim().toUpperCase() !== "APAGAR TUDO") {
-      setError('Marque a confirmação e digite "APAGAR TUDO" exatamente.');
+      setError(t.wipeNeedConfirm);
       return;
     }
     setBusy(true);
@@ -157,7 +161,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setWipePass("");
       setWipeConfirmText("");
       setWipeChecked(false);
-      setSuccess("Cofre sobrescrito e apagado permanentemente.");
+      setSuccess(t.vaultDestroyedMsg);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -171,7 +175,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         <div className="modal-header">
           <div className="modal-title">
             <Shield size={17} style={{ color: "var(--accent)" }} />
-            Configurações & Segurança
+            {t.settingsTitle}
           </div>
           <button className="icon-btn" onClick={onClose}>
             <X size={17} />
@@ -181,11 +185,42 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         {error && <div className="alert-banner">{error}</div>}
         {success && <div className="success-banner">{success}</div>}
 
+        {/* Language selector */}
+        <div className="setting-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
+          <div className="setting-info">
+            <strong style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <Globe size={13} /> {t.languageLabel}
+            </strong>
+            <span>{t.languageSub}</span>
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            {LANGUAGES.map((l) => {
+              const active = (preferences.language ?? "pt") === l.id;
+              return (
+                <button
+                  key={l.id}
+                  type="button"
+                  className={`btn ${active ? "btn-primary" : ""}`}
+                  style={{ flex: 1, padding: "7px 8px", fontSize: 12 }}
+                  onClick={() =>
+                    onPreferencesChange({
+                      ...preferences,
+                      language: l.id,
+                    })
+                  }
+                >
+                  {l.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Appearance & Preferences */}
         <div className="setting-row">
           <div className="setting-info">
-            <strong>Tema da Interface</strong>
-            <span>Alterne entre modo claro e modo escuro</span>
+            <strong>{t.themeLabel}</strong>
+            <span>{t.themeSub}</span>
           </div>
           <button
             className="btn"
@@ -198,11 +233,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           >
             {preferences.theme === "dark" ? (
               <>
-                <Sun size={14} /> Claro
+                <Sun size={14} /> {t.lightMode}
               </>
             ) : (
               <>
-                <Moon size={14} /> Escuro
+                <Moon size={14} /> {t.darkMode}
               </>
             )}
           </button>
@@ -210,8 +245,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         <div className="setting-row">
           <div className="setting-info">
-            <strong>Bloqueio Automático</strong>
-            <span>Fecha e limpa a RAM após inatividade</span>
+            <strong>{t.autoLockLabel}</strong>
+            <span>{t.autoLockSub}</span>
           </div>
           <select
             className="field-input"
@@ -224,18 +259,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               })
             }
           >
-            <option value={60}>1 minuto</option>
-            <option value={180}>3 minutos</option>
-            <option value={300}>5 minutos</option>
-            <option value={900}>15 minutos</option>
-            <option value={0}>Desativado</option>
+            <option value={60}>{t.min1}</option>
+            <option value={180}>{t.min3}</option>
+            <option value={300}>{t.min5}</option>
+            <option value={900}>{t.min15}</option>
+            <option value={0}>{t.disabled}</option>
           </select>
         </div>
 
         <div className="setting-row">
           <div className="setting-info">
-            <strong>Anti-Captura de Tela</strong>
-            <span>Oculta a janela em prints/gravações quando o cofre está aberto</span>
+            <strong>{t.screenProtectLabel}</strong>
+            <span>{t.screenProtectSub}</span>
           </div>
           <input
             type="checkbox"
@@ -251,8 +286,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         <div className="setting-row">
           <div className="setting-info">
-            <strong>Gatilho Discreto nas Notas</strong>
-            <span>Abre o cofre ao digitar a frase-chave em qualquer nota</span>
+            <strong>{t.stealthTriggerLabel}</strong>
+            <span>{t.stealthTriggerSub}</span>
           </div>
           <input
             type="checkbox"
@@ -275,9 +310,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             onClick={handleCheckUpdate}
           >
             <RefreshCw size={14} />
-            {checkingUpdate
-              ? "Buscando e instalando atualização..."
-              : "Buscar Atualizações"}
+            {checkingUpdate ? t.searchingUpdates : t.searchUpdates}
           </button>
           {updateInfo && updateInfo.update_available && !updateInfo.download_url && (
             <div
@@ -293,7 +326,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               }}
             >
               <span>
-                Nova versão disponível: <strong>v{updateInfo.latest_version}</strong>
+                {t.newVersionAvailable} <strong>v{updateInfo.latest_version}</strong>
               </span>
               <a
                 href={updateInfo.release_url}
@@ -301,7 +334,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 rel="noreferrer"
                 style={{ color: "var(--accent)", fontWeight: 600 }}
               >
-                Abrir Release
+                {t.openRelease}
               </a>
             </div>
           )}
@@ -311,16 +344,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         {!vaultStatus.exists ? (
           <form onSubmit={handleSetupVault} className="field-group">
             <div className="field-label" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <KeyRound size={13} /> Criar Frase-Chave do Cofre Secreto
+              <KeyRound size={13} /> {t.createPassTitle}
             </div>
             <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
-              Depois de criada, escreva essa mesma frase em qualquer nota normal para abrir o seu Stick Note seguro (com textos, imagens, vídeos e pastas).
+              {t.createPassDesc}
             </div>
             <div style={{ display: "flex", gap: 6 }}>
               <input
                 type={showPass ? "text" : "password"}
                 className="field-input"
-                placeholder="Digite sua frase-chave secreta..."
+                placeholder={t.passphrasePlaceholder}
                 value={newPass}
                 onChange={(e) => setNewPass(e.target.value)}
               />
@@ -335,59 +368,59 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <input
               type={showPass ? "text" : "password"}
               className="field-input"
-              placeholder="Confirme a frase-chave..."
+              placeholder={t.confirmPassPlaceholder}
               value={confirmPass}
               onChange={(e) => setConfirmPass(e.target.value)}
             />
             <button type="submit" className="btn btn-primary" disabled={busy}>
-              <Lock size={14} /> Ativar Cofre Criptografado
+              <Lock size={14} /> {t.activateVault}
             </button>
           </form>
         ) : (
           <>
             {!vaultStatus.unlocked && (
               <form onSubmit={handleManualUnlock} className="field-group">
-                <div className="field-label">Abrir Cofre Manualmente</div>
+                <div className="field-label">{t.manualUnlockLabel}</div>
                 <div style={{ display: "flex", gap: 6 }}>
                   <input
                     type={showPass ? "text" : "password"}
                     className="field-input"
-                    placeholder="Frase-chave do cofre..."
+                    placeholder={t.passphrasePlaceholder}
                     value={manualUnlockPass}
                     onChange={(e) => setManualUnlockPass(e.target.value)}
                   />
                   <button type="submit" className="btn btn-primary" disabled={busy}>
-                    Abrir
+                    {t.openBtn}
                   </button>
                 </div>
               </form>
             )}
 
             <form onSubmit={handleChangePass} className="field-group">
-              <div className="field-label">Alterar Frase-Chave</div>
+              <div className="field-label">{t.changePassLabel}</div>
               <input
                 type={showPass ? "text" : "password"}
                 className="field-input"
-                placeholder="Frase-chave atual..."
+                placeholder={t.currentPassPlaceholder}
                 value={currentPass}
                 onChange={(e) => setCurrentPass(e.target.value)}
               />
               <input
                 type={showPass ? "text" : "password"}
                 className="field-input"
-                placeholder="Nova frase-chave..."
+                placeholder={t.newPassPlaceholder}
                 value={newPass}
                 onChange={(e) => setNewPass(e.target.value)}
               />
               <input
                 type={showPass ? "text" : "password"}
                 className="field-input"
-                placeholder="Confirme a nova frase-chave..."
+                placeholder={t.confirmNewPassPlaceholder}
                 value={confirmPass}
                 onChange={(e) => setConfirmPass(e.target.value)}
               />
               <button type="submit" className="btn" disabled={busy}>
-                <KeyRound size={14} /> Atualizar Frase-Chave
+                <KeyRound size={14} /> {t.updatePassBtn}
               </button>
             </form>
 
@@ -403,22 +436,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   color: "var(--danger)",
                 }}
               >
-                <AlertTriangle size={15} /> Exclusão Protegida do Cofre
+                <AlertTriangle size={15} /> {t.dangerZoneTitle}
               </div>
               <span style={{ fontSize: 11.5, color: "var(--text-secondary)" }}>
-                O cofre e o aplicativo não podem ser apagados sem digitar sua frase-chave e confirmar que todos os dados serão destruídos.
+                {t.dangerZoneDesc}
               </span>
               <input
                 type="password"
                 className="field-input"
-                placeholder="Digite sua frase-chave atual..."
+                placeholder={t.currentPassPlaceholder}
                 value={wipePass}
                 onChange={(e) => setWipePass(e.target.value)}
               />
               <input
                 type="text"
                 className="field-input"
-                placeholder='Digite "APAGAR TUDO" para confirmar'
+                placeholder={t.confirmDestroyPlaceholder}
                 value={wipeConfirmText}
                 onChange={(e) => setWipeConfirmText(e.target.value)}
               />
@@ -428,9 +461,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   checked={wipeChecked}
                   onChange={(e) => setWipeChecked(e.target.checked)}
                 />
-                <span>
-                  Confirmo que todas as notas secretas, imagens, vídeos e pastas serão apagados permanentemente.
-                </span>
+                <span>{t.confirmDestroyCheck}</span>
               </label>
               <label className="checkbox-confirm">
                 <input
@@ -438,7 +469,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   checked={alsoWipePublic}
                   onChange={(e) => setAlsoWipePublic(e.target.checked)}
                 />
-                <span>Também apagar minhas notas normais (públicas)</span>
+                <span>{t.alsoWipePublic}</span>
               </label>
               <button
                 type="submit"
@@ -450,7 +481,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   !wipePass
                 }
               >
-                <Trash2 size={14} /> Destruir Cofre Permanentemente
+                <Trash2 size={14} /> {t.destroyVaultBtn}
               </button>
             </form>
           </>

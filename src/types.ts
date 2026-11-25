@@ -31,8 +31,11 @@ export interface StickyNote {
   updated_at: string;
 }
 
+export type Language = "pt" | "en" | "es";
+
 export interface AppPreferences {
   theme: "dark" | "light";
+  language?: Language;
   always_on_top: boolean;
   auto_lock_seconds: number;
   screen_protect: boolean;

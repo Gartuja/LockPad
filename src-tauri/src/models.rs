@@ -26,9 +26,15 @@ pub struct StickyNote {
     pub updated_at: String,
 }
 
+fn default_language() -> String {
+    "pt".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppPreferences {
     pub theme: String,
+    #[serde(default = "default_language")]
+    pub language: String,
     pub always_on_top: bool,
     pub auto_lock_seconds: u64,
     pub screen_protect: bool,
@@ -40,6 +46,7 @@ impl Default for AppPreferences {
     fn default() -> Self {
         Self {
             theme: "dark".to_string(),
+            language: "pt".to_string(),
             always_on_top: false,
             auto_lock_seconds: 180,
             screen_protect: true,

@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { api } from "./api";
+import { getStrings } from "./i18n";
 import type {
   AppPreferences,
   StickyNote,
@@ -33,6 +34,7 @@ import { PopoutNoteView } from "./components/PopoutNoteView";
 
 const DEFAULT_PREFS: AppPreferences = {
   theme: "dark",
+  language: "pt",
   always_on_top: false,
   auto_lock_seconds: 180,
   screen_protect: true,
@@ -89,8 +91,9 @@ export const App: React.FC = () => {
   const [quickUnlockError, setQuickUnlockError] = useState<string | null>(null);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [detachedIds, setDetachedIds] = useState<string[]>([]);
-  const [appVersion, setAppVersion] = useState("1.6.0");
+  const [appVersion, setAppVersion] = useState("1.7.0");
   const [banner, setBanner] = useState<{ text: string; isError?: boolean } | null>(null);
+  const t = getStrings(preferences.language);
 
   const stealthInFlightRef = useRef(false);
   const publicSaveTimerRef = useRef<number | null>(null);
@@ -153,7 +156,7 @@ export const App: React.FC = () => {
         setVaultManifest(null);
         const updatedSt = await api.getVaultStatus();
         setVaultStatus(updatedSt);
-        flashBanner("Cofre bloqueado automaticamente por inatividade.");
+        flashBanner(getStrings(preferences.language).autoLockedMsg);
       });
 
       unlistenVaultUnlocked = await listen("vault-unlocked", async () => {
@@ -258,6 +261,7 @@ export const App: React.FC = () => {
   const handlePreferencesChange = async (next: AppPreferences) => {
     setPreferences(next);
     emit("theme-sync", next.theme).catch(() => {});
+    emit("lang-sync", next.language ?? "pt").catch(() => {});
     try {
       await api.savePreferences(next);
       const st = await api.getVaultStatus();
@@ -306,7 +310,7 @@ export const App: React.FC = () => {
         setShowQuickUnlock(false);
         await loadVaultSession();
       } else {
-        setQuickUnlockError("Frase-chave incorreta.");
+        setQuickUnlockError(t.wrongPassphrase);
       }
     } catch (err) {
       setQuickUnlockError(String(err));
@@ -456,7 +460,7 @@ export const App: React.FC = () => {
             {isVaultView && (
               <span className="vault-pill">
                 <Lock size={10} />
-                {vaultStatus.screen_protect_active ? "Anti-Captura" : "Criptografado"}
+                {vaultStatus.screen_protect_active ? t.antiCapture : t.encrypted}
               </span>
             )}
           </div>
@@ -465,7 +469,7 @@ export const App: React.FC = () => {
         <div className="titlebar-actions">
           <button
             className="icon-btn"
-            title={preferences.theme === "dark" ? "Modo claro" : "Modo escuro"}
+            title={preferences.theme === "dark" ? t.themeDarkTip : t.themeLightTip}
             onClick={() =>
               handlePreferencesChange({
                 ...preferences,
@@ -477,21 +481,21 @@ export const App: React.FC = () => {
           </button>
           <button
             className="icon-btn"
-            title="Configurações & Segurança"
+            title={t.settingsTitle}
             onClick={() => setShowSettings(true)}
           >
             <Settings size={14} />
           </button>
           <button
             className="icon-btn"
-            title="Minimizar para barra de tarefas"
+            title={t.minimizeTip}
             onClick={() => api.minimizeWindow()}
           >
             <Minus size={14} />
           </button>
           <button
             className="icon-btn danger"
-            title="Fechar"
+            title={t.closeTip}
             onClick={() => setShowCloseConfirm(true)}
           >
             <X size={14} />
@@ -504,9 +508,7 @@ export const App: React.FC = () => {
         <div className="search-box">
           <Search size={14} />
           <input
-            placeholder={
-              isVaultView ? "Buscar notas no cofre..." : "Buscar anotações..."
-            }
+            placeholder={isVaultView ? t.searchVault : t.searchPublic}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -515,15 +517,15 @@ export const App: React.FC = () => {
           <button
             className="lock-now-btn"
             onClick={handleLockVault}
-            title="Trancar cofre e limpar chaves da memória (Ctrl+Shift+L)"
+            title={t.closeVaultTip}
           >
-            <EyeOff size={13} /> Fechar Cofre
+            <EyeOff size={13} /> {t.closeVault}
           </button>
         ) : (
           vaultStatus.exists && (
             <button
               className="icon-btn"
-              title="Abrir cofre com frase-chave (Ctrl+Shift+K)"
+              title={t.unlockVaultTip}
               onClick={() => setShowQuickUnlock(true)}
             >
               <KeyRound size={14} />
@@ -546,6 +548,7 @@ export const App: React.FC = () => {
           <NoteCard
             key={note.id}
             note={note}
+            lang={preferences.language}
             focused={focusedNoteId === note.id}
             onFocus={() => setFocusedNoteId(note.id)}
             onChange={updateNote}
@@ -565,13 +568,14 @@ export const App: React.FC = () => {
               fontSize: 12.5,
             }}
           >
-            Nenhuma anotação encontrada. Clique em <strong>+ Nova Nota</strong> abaixo.
+            {t.noNotesFound} <strong>+ {isVaultView ? t.secretNote : t.newNote}</strong>.
           </div>
         )}
 
         {isVaultView && vaultManifest && (
           <VaultFilesSection
             manifest={vaultManifest}
+            lang={preferences.language}
             onManifestUpdate={(next) => setVaultManifest(next)}
             onStatusMessage={flashBanner}
           />
@@ -581,20 +585,20 @@ export const App: React.FC = () => {
       {/* Bottom Floating Dock */}
       <footer className="bottom-dock">
         <button className="dock-primary-btn" onClick={() => addNote(false)}>
-          <Plus size={16} /> {isVaultView ? "Nota Secreta" : "Nova Nota"}
+          <Plus size={16} /> {isVaultView ? t.secretNote : t.newNote}
         </button>
 
         <div className="dock-tools">
           <button
             className="icon-btn"
-            title="Nova lista de tarefas"
+            title={t.newChecklist}
             onClick={() => addNote(true)}
           >
             <ListTodo size={16} />
           </button>
           <button
             className="icon-btn"
-            title="Configurações & Frase-chave"
+            title={t.settingsTitle}
             onClick={() => setShowSettings(true)}
           >
             <Settings size={16} />
@@ -619,7 +623,7 @@ export const App: React.FC = () => {
             <div className="modal-header">
               <div className="modal-title">
                 <Lock size={16} style={{ color: "var(--accent)" }} />
-                Desbloquear Cofre
+                {t.unlockModalTitle}
               </div>
               <button
                 className="icon-btn"
@@ -638,7 +642,7 @@ export const App: React.FC = () => {
               <input
                 type="password"
                 className="field-input"
-                placeholder="Digite sua frase-chave secreta..."
+                placeholder={t.passphrasePlaceholder}
                 value={quickPass}
                 onChange={(e) => {
                   setQuickPass(e.target.value);
@@ -647,7 +651,7 @@ export const App: React.FC = () => {
                 autoFocus
               />
               <button type="submit" className="btn btn-primary">
-                Abrir Stick Note Seguro
+                {t.openSecureNote}
               </button>
             </form>
           </div>
@@ -668,7 +672,7 @@ export const App: React.FC = () => {
             <div className="modal-header">
               <div className="modal-title">
                 <AlertTriangle size={17} style={{ color: "var(--danger)" }} />
-                Fechar LockPad?
+                {t.closeConfirmTitle}
               </div>
               <button
                 className="icon-btn"
@@ -678,22 +682,21 @@ export const App: React.FC = () => {
               </button>
             </div>
             <div style={{ fontSize: 12.5, color: "var(--text-secondary)", lineHeight: 1.5 }}>
-              Tem certeza que deseja encerrar o LockPad?
-              {isVaultView &&
-                " Seu cofre seguro será trancado e as chaves da memória serão limpas automaticamente."}
+              {t.closeConfirmBody}
+              {isVaultView && t.closeConfirmVaultExtra}
             </div>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button
                 className="btn"
                 onClick={() => setShowCloseConfirm(false)}
               >
-                Cancelar
+                {t.cancel}
               </button>
               <button
                 className="btn btn-danger"
                 onClick={() => api.exitApp()}
               >
-                Fechar LockPad
+                {t.closeApp}
               </button>
             </div>
           </div>

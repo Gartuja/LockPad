@@ -16,19 +16,23 @@ import {
   X,
 } from "lucide-react";
 import { api, formatBytes, vaultBlobUrl } from "../api";
-import type { VaultFile, VaultFolder, VaultManifest } from "../types";
+import { getStrings } from "../i18n";
+import type { Language, VaultFile, VaultFolder, VaultManifest } from "../types";
 
 interface VaultFilesSectionProps {
   manifest: VaultManifest;
+  lang?: Language;
   onManifestUpdate: (next: VaultManifest) => void;
   onStatusMessage: (msg: string, isError?: boolean) => void;
 }
 
 export const VaultFilesSection: React.FC<VaultFilesSectionProps> = ({
   manifest,
+  lang,
   onManifestUpdate,
   onStatusMessage,
 }) => {
+  const t = getStrings(lang);
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [newFolderName, setNewFolderName] = useState("");
   const [creatingFolder, setCreatingFolder] = useState(false);
@@ -205,39 +209,36 @@ export const VaultFilesSection: React.FC<VaultFilesSectionProps> = ({
       <div className="note-header" style={{ justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700 }}>
           <Shield size={14} style={{ color: "var(--vault-accent)" }} />
-          Arquivos, Mídia & Pastas Criptografadas
+          {t.vaultFilesTitle}
         </div>
         <div style={{ display: "flex", gap: 4 }}>
           <button
             className="mini-btn"
             disabled={busy}
             onClick={() => setCreatingFolder((v) => !v)}
-            title="Nova pasta no cofre"
           >
-            <FolderPlus size={13} /> Pasta
+            <FolderPlus size={13} /> {t.folderBtn}
           </button>
           <button
             className="mini-btn"
             disabled={busy}
             onClick={handlePickFiles}
-            title="Adicionar imagens, vídeos ou arquivos"
           >
-            <Upload size={13} /> Arquivos
+            <Upload size={13} /> {t.filesBtn}
           </button>
           <button
             className="mini-btn"
             disabled={busy}
             onClick={handlePickFolder}
-            title="Importar pasta inteira do PC"
           >
-            <Folder size={13} /> Importar Pasta
+            <Folder size={13} /> {t.importFolderBtn}
           </button>
         </div>
       </div>
 
       <div className="vault-breadcrumbs">
         <button className="crumb-btn" onClick={() => setCurrentFolderId(null)}>
-          Cofre Raiz
+          {t.vaultRoot}
         </button>
         {breadcrumbs.map((b) => (
           <React.Fragment key={b.id}>
@@ -253,20 +254,20 @@ export const VaultFilesSection: React.FC<VaultFilesSectionProps> = ({
         <form onSubmit={handleCreateFolder} style={{ display: "flex", gap: 6 }}>
           <input
             className="field-input"
-            placeholder="Nome da nova pasta..."
+            placeholder={t.newFolderPlaceholder}
             value={newFolderName}
             onChange={(e) => setNewFolderName(e.target.value)}
             autoFocus
           />
           <button type="submit" className="btn btn-primary">
-            Criar
+            {t.createBtn}
           </button>
         </form>
       )}
 
       {busy && (
         <div style={{ fontSize: 12, color: "var(--vault-accent)" }}>
-          Criptografando em blocos XChaCha20-Poly1305...
+          {t.encryptingMsg}
         </div>
       )}
 
@@ -277,11 +278,10 @@ export const VaultFilesSection: React.FC<VaultFilesSectionProps> = ({
             textAlign: "center",
             fontSize: 12,
             color: "var(--text-muted)",
+            whiteSpace: "pre-line",
           }}
         >
-          Arraste imagens, vídeos, documentos ou pastas inteiras aqui dentro.
-          <br />
-          Nenhum arquivo temporário descriptografado é gravado no disco.
+          {t.emptyVaultDrop}
         </div>
       ) : (
         <div className="vault-grid">
@@ -298,7 +298,7 @@ export const VaultFilesSection: React.FC<VaultFilesSectionProps> = ({
                 {folder.name}
               </div>
               <div className="vault-item-meta">
-                <span>Pasta</span>
+                <span>{t.folderTag}</span>
                 <div className="vault-item-actions">
                   <button
                     className="mini-btn"
@@ -408,8 +408,8 @@ export const VaultFilesSection: React.FC<VaultFilesSectionProps> = ({
               previewFile.kind !== "video" &&
               previewFile.kind !== "audio" && (
                 <div style={{ fontSize: 12.5, color: "var(--text-secondary)", padding: "12px 0" }}>
-                  Arquivo criptografado ({formatBytes(previewFile.size_bytes)}).
-                  Use <strong>Exportar</strong> caso queira salvá-lo descriptografado em uma pasta.
+                  {t.encryptedFilePreview} ({formatBytes(previewFile.size_bytes)}).{" "}
+                  {t.exportHint}
                 </div>
               )}
 
@@ -418,13 +418,13 @@ export const VaultFilesSection: React.FC<VaultFilesSectionProps> = ({
                 className="btn btn-danger"
                 onClick={(e) => handleDeleteFile(previewFile, e)}
               >
-                <Trash2 size={14} /> Destruir
+                <Trash2 size={14} /> {t.destroyBtn}
               </button>
               <button
                 className="btn btn-primary"
                 onClick={(e) => handleExportFile(previewFile, e)}
               >
-                <Download size={14} /> Exportar
+                <Download size={14} /> {t.exportBtn}
               </button>
             </div>
           </div>

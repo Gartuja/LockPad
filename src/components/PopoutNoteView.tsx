@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api } from "../api";
-import type { StickyNote } from "../types";
+import type { Language, StickyNote } from "../types";
 import { NoteCard } from "./NoteCard";
 
 interface PopoutNoteViewProps {
@@ -18,18 +18,21 @@ export const PopoutNoteView: React.FC<PopoutNoteViewProps> = ({
 }) => {
   const [note, setNote] = useState<StickyNote | null>(null);
   const [theme, setTheme] = useState<"dark" | "light">(initialTheme);
+  const [lang, setLang] = useState<Language>("pt");
   const saveTimerRef = useRef<number | null>(null);
   const stealthInFlightRef = useRef(false);
 
   useEffect(() => {
     let unlistenSync: (() => void) | undefined;
     let unlistenTheme: (() => void) | undefined;
+    let unlistenLang: (() => void) | undefined;
     let unlistenLock: (() => void) | undefined;
 
     (async () => {
       try {
         const store = await api.getPublicStore();
         setTheme(store.preferences.theme);
+        if (store.preferences.language) setLang(store.preferences.language);
         if (isVault) {
           const manifest = await api.getVaultManifest();
           const found = manifest.notes.find((n) => n.id === noteId) ?? null;
@@ -55,6 +58,10 @@ export const PopoutNoteView: React.FC<PopoutNoteViewProps> = ({
         setTheme(ev.payload);
       });
 
+      unlistenLang = await listen<Language>("lang-sync", (ev) => {
+        setLang(ev.payload);
+      });
+
       if (isVault) {
         unlistenLock = await listen("vault-auto-locked", () => {
           getCurrentWindow().close();
@@ -65,6 +72,7 @@ export const PopoutNoteView: React.FC<PopoutNoteViewProps> = ({
     return () => {
       if (unlistenSync) unlistenSync();
       if (unlistenTheme) unlistenTheme();
+      if (unlistenLang) unlistenLang();
       if (unlistenLock) unlistenLock();
     };
   }, [noteId, isVault]);
@@ -135,6 +143,7 @@ export const PopoutNoteView: React.FC<PopoutNoteViewProps> = ({
     <div className={`popout-root ${theme === "light" ? "theme-light" : "theme-dark"}`}>
       <NoteCard
         note={note}
+        lang={lang}
         focused={false}
         isPopout={true}
         onFocus={() => {}}
