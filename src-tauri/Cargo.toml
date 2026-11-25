@@ -1,6 +1,6 @@
 [package]
 name = "lockpad"
-version = "1.7.0"
+version = "1.8.0"
 description = "LockPad - Notas rápidas com cofre criptografado"
 authors = ["LockPad"]
 edition = "2021"

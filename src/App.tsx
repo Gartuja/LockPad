@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { api } from "./api";
 import { getStrings } from "./i18n";
+import { htmlToPlainText } from "./utils/richText";
 import type {
   AppPreferences,
   StickyNote,
@@ -91,7 +92,7 @@ export const App: React.FC = () => {
   const [quickUnlockError, setQuickUnlockError] = useState<string | null>(null);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [detachedIds, setDetachedIds] = useState<string[]>([]);
-  const [appVersion, setAppVersion] = useState("1.7.0");
+  const [appVersion, setAppVersion] = useState("1.8.0");
   const [banner, setBanner] = useState<{ text: string; isError?: boolean } | null>(null);
   const t = getStrings(preferences.language);
 
@@ -328,7 +329,7 @@ export const App: React.FC = () => {
       ? source.filter(
           (n) =>
             n.title.toLowerCase().includes(q) ||
-            n.content.toLowerCase().includes(q) ||
+            htmlToPlainText(n.content).toLowerCase().includes(q) ||
             n.checklist.some((c) => c.text.toLowerCase().includes(q))
         )
       : source;

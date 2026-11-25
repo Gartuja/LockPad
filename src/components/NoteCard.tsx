@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Check, ExternalLink, GripVertical, Image as ImageIcon, ListTodo, Palette, Pin, Plus, Trash2, Type, X } from "lucide-react";
 import { getStrings } from "../i18n";
+import { htmlToPlainText, sanitizeNoteHtml } from "../utils/richText";
 import type { Language, NoteColor, StickyNote } from "../types";
 
 const FONT_OPTIONS: { id: string; label: string; css: string }[] = [
@@ -63,16 +64,23 @@ export const NoteCard: React.FC<NoteCardProps> = ({
   isPopout,
   onStealthCandidate,
 }) => {
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const editorRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const fontBtnRef = useRef<HTMLButtonElement | null>(null);
   const debounceRef = useRef<number | null>(null);
-  const lastSavedContentRef = useRef<string>(note.content);
+  const lastSavedHtmlRef = useRef<string>(sanitizeNoteHtml(note.content));
+  const lastDomHtmlRef = useRef<string>("");
   const [draggingOut, setDraggingOut] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [mediaMenuOpen, setMediaMenuOpen] = useState(false);
   const [fontSizeOpen, setFontSizeOpen] = useState(false);
   const [fontFamilyOpen, setFontFamilyOpen] = useState(false);
+  const [activeFormats, setActiveFormats] = useState({
+    bold: false,
+    italic: false,
+    strikeThrough: false,
+    underline: false,
+  });
   const [fontMenuPos, setFontMenuPos] = useState<{ top: number; left: number }>({
     top: 40,
     left: 40,
@@ -84,12 +92,28 @@ export const NoteCard: React.FC<NoteCardProps> = ({
     FONT_OPTIONS.find((f) => f.id === (note.font_family ?? "sans"))?.css ??
     FONT_OPTIONS[0].css;
 
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = `${Math.max(72, textareaRef.current.scrollHeight)}px`;
+  const refreshActiveFormats = () => {
+    try {
+      setActiveFormats({
+        bold: document.queryCommandState("bold"),
+        italic: document.queryCommandState("italic"),
+        strikeThrough: document.queryCommandState("strikeThrough"),
+        underline: document.queryCommandState("underline"),
+      });
+    } catch {
+      // Ignore if selection is outside
     }
-  }, [note.content, note.is_checklist, activeFontSize, activeFontCss]);
+  };
+
+  useEffect(() => {
+    const el = editorRef.current;
+    if (!el || note.is_checklist) return;
+    const sanitized = sanitizeNoteHtml(note.content);
+    if (sanitized !== lastDomHtmlRef.current) {
+      el.innerHTML = sanitized;
+      lastDomHtmlRef.current = sanitized;
+    }
+  }, [note.id, note.content, note.is_checklist]);
 
   useEffect(() => {
     return () => {
@@ -97,17 +121,22 @@ export const NoteCard: React.FC<NoteCardProps> = ({
     };
   }, []);
 
-  const triggerStealthCheck = (text: string, previousSafeContent: string) => {
+  const triggerStealthCheck = (plainText: string, previousSafeHtml: string) => {
     if (!onStealthCandidate) return;
-    const trimmed = text.trim();
+    const trimmed = plainText.trim();
     if (trimmed.length < 4) return;
-    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const lines = plainText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     const lastLine = lines.length > 0 ? lines[lines.length - 1] : "";
 
     const cleanup = () => {
+      lastDomHtmlRef.current = previousSafeHtml;
+      lastSavedHtmlRef.current = previousSafeHtml;
+      if (editorRef.current) {
+        editorRef.current.innerHTML = previousSafeHtml;
+      }
       onChange({
         ...note,
-        content: previousSafeContent,
+        content: previousSafeHtml,
         updated_at: new Date().toISOString(),
       });
     };
@@ -118,54 +147,66 @@ export const NoteCard: React.FC<NoteCardProps> = ({
     onStealthCandidate(trimmed, cleanup);
   };
 
-  const handleContentChange = (val: string) => {
-    const prevSafe = lastSavedContentRef.current;
+  const commitEditorHtml = (rawHtml: string, plainText: string) => {
+    const prevSafe = lastSavedHtmlRef.current;
+    const cleanHtml = sanitizeNoteHtml(rawHtml);
+    lastDomHtmlRef.current = cleanHtml;
+
     onChange({
       ...note,
-      content: val,
+      content: cleanHtml,
       updated_at: new Date().toISOString(),
     });
 
     if (onStealthCandidate) {
       if (debounceRef.current) window.clearTimeout(debounceRef.current);
       debounceRef.current = window.setTimeout(() => {
-        triggerStealthCheck(val, prevSafe);
-        lastSavedContentRef.current = val;
+        triggerStealthCheck(plainText, prevSafe);
+        lastSavedHtmlRef.current = cleanHtml;
       }, 650);
     } else {
-      lastSavedContentRef.current = val;
+      lastSavedHtmlRef.current = cleanHtml;
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && onStealthCandidate) {
-      if (debounceRef.current) window.clearTimeout(debounceRef.current);
-      triggerStealthCheck(note.content, lastSavedContentRef.current);
-    }
-  };
-
-  const wrapSelection = (prefix: string, suffix: string) => {
-    const el = textareaRef.current;
+  const handleEditorInput = () => {
+    const el = editorRef.current;
     if (!el) return;
-    const start = el.selectionStart;
-    const end = el.selectionEnd;
-    const selected = note.content.slice(start, end) || "texto";
-    const next =
-      note.content.slice(0, start) +
-      prefix +
-      selected +
-      suffix +
-      note.content.slice(end);
-    handleContentChange(next);
-    requestAnimationFrame(() => {
+    commitEditorHtml(el.innerHTML, el.innerText ?? "");
+    refreshActiveFormats();
+  };
+
+  const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Enter" && onStealthCandidate && editorRef.current) {
+      if (debounceRef.current) window.clearTimeout(debounceRef.current);
+      triggerStealthCheck(
+        editorRef.current.innerText ?? "",
+        lastSavedHtmlRef.current
+      );
+    }
+  };
+
+  const handleEditorPaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const plain = e.clipboardData.getData("text/plain");
+    document.execCommand("insertText", false, plain);
+  };
+
+  const applyFormat = (cmd: "bold" | "italic" | "strikeThrough" | "underline") => {
+    const el = editorRef.current;
+    if (!el) return;
+    if (document.activeElement !== el) {
       el.focus();
-      el.setSelectionRange(start + prefix.length, start + prefix.length + selected.length);
-    });
+    }
+    document.execCommand(cmd, false);
+    commitEditorHtml(el.innerHTML, el.innerText ?? "");
+    refreshActiveFormats();
   };
 
   const toggleChecklistMode = () => {
     if (!note.is_checklist) {
-      const lines = note.content
+      const plain = htmlToPlainText(note.content);
+      const lines = plain
         .split(/\r?\n/)
         .map((l) => l.trim())
         .filter(Boolean);
@@ -184,7 +225,8 @@ export const NoteCard: React.FC<NoteCardProps> = ({
         updated_at: new Date().toISOString(),
       });
     } else {
-      const text = note.checklist.map((c) => c.text).join("\n");
+      const text = sanitizeNoteHtml(note.checklist.map((c) => c.text).join("\n"));
+      lastDomHtmlRef.current = "";
       onChange({
         ...note,
         is_checklist: false,
@@ -448,14 +490,18 @@ export const NoteCard: React.FC<NoteCardProps> = ({
           </button>
         </div>
       ) : (
-        <textarea
-          ref={textareaRef}
-          className="note-textarea"
+        <div
+          ref={editorRef}
+          contentEditable
+          suppressContentEditableWarning
+          className="note-rich-editor"
+          data-placeholder={t.noteContentPlaceholder}
           style={{ fontSize: activeFontSize, fontFamily: activeFontCss }}
-          placeholder={t.noteContentPlaceholder}
-          value={note.content}
-          onChange={(e) => handleContentChange(e.target.value)}
-          onKeyDown={handleKeyDown}
+          onInput={handleEditorInput}
+          onKeyDown={handleEditorKeyDown}
+          onKeyUp={refreshActiveFormats}
+          onMouseUp={refreshActiveFormats}
+          onPaste={handleEditorPaste}
         />
       )}
 
@@ -464,30 +510,42 @@ export const NoteCard: React.FC<NoteCardProps> = ({
           {!note.is_checklist && (
             <>
               <button
-                className="mini-btn"
+                className={`mini-btn ${activeFormats.bold ? "active" : ""}`}
                 title={t.bold}
-                onClick={() => wrapSelection("**", "**")}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  applyFormat("bold");
+                }}
               >
                 <strong>B</strong>
               </button>
               <button
-                className="mini-btn"
+                className={`mini-btn ${activeFormats.italic ? "active" : ""}`}
                 title={t.italic}
-                onClick={() => wrapSelection("_", "_")}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  applyFormat("italic");
+                }}
               >
                 <em>I</em>
               </button>
               <button
-                className="mini-btn"
+                className={`mini-btn ${activeFormats.strikeThrough ? "active" : ""}`}
                 title={t.strike}
-                onClick={() => wrapSelection("~~", "~~")}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  applyFormat("strikeThrough");
+                }}
               >
                 <s>S</s>
               </button>
               <button
-                className="mini-btn"
+                className={`mini-btn ${activeFormats.underline ? "active" : ""}`}
                 title={t.underline}
-                onClick={() => wrapSelection("__", "__")}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  applyFormat("underline");
+                }}
               >
                 <u>U</u>
               </button>

@@ -467,7 +467,8 @@ body,
   padding: 12px 14px 10px;
 }
 
-.popout-root .note-card .note-textarea {
+.popout-root .note-card .note-textarea,
+.popout-root .note-card .note-rich-editor {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -519,6 +520,16 @@ body,
   font-size: 13px;
   line-height: 1.55;
   word-break: break-word;
+  position: relative;
+  z-index: 1;
+  user-select: text;
+  cursor: text;
+}
+
+.note-rich-editor:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-muted);
+  pointer-events: none;
 }
 
 .checklist-list {
