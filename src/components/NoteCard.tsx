@@ -5,21 +5,21 @@ import { Check, ExternalLink, GripVertical, Image as ImageIcon, ListTodo, Palett
 import type { NoteColor, StickyNote } from "../types";
 
 const FONT_OPTIONS: { id: string; label: string; css: string }[] = [
-  { id: "sans", label: "Padrão (Inter / Segoe)", css: '"Inter", "Segoe UI", system-ui, sans-serif' },
-  { id: "rounded", label: "Arredondada (Trebuchet)", css: '"Trebuchet MS", "Segoe UI", sans-serif' },
-  { id: "clean", label: "Clean (Calibri)", css: 'Calibri, "Segoe UI", sans-serif' },
-  { id: "humanist", label: "Humanista (Verdana)", css: 'Verdana, Geneva, sans-serif' },
-  { id: "compact", label: "Compacta (Tahoma)", css: 'Tahoma, Geneva, sans-serif' },
-  { id: "geometric", label: "Geométrica (Century)", css: '"Century Gothic", Futura, sans-serif' },
-  { id: "serif", label: "Clássica (Georgia)", css: 'Georgia, "Times New Roman", serif' },
-  { id: "editorial", label: "Editorial (Cambria)", css: 'Cambria, Georgia, serif' },
-  { id: "elegant", label: "Elegante (Palatino)", css: '"Palatino Linotype", "Book Antiqua", serif' },
-  { id: "times", label: "Tradicional (Times)", css: '"Times New Roman", Times, serif' },
-  { id: "mono", label: "Código (Consolas)", css: '"Cascadia Code", Consolas, monospace' },
-  { id: "courier", label: "Técnica (Courier)", css: '"Courier New", Courier, monospace' },
-  { id: "lucida", label: "Terminal (Lucida)", css: '"Lucida Console", Monaco, monospace' },
-  { id: "script", label: "Manuscrita (Script)", css: '"Segoe Script", "Comic Sans MS", cursive' },
-  { id: "impact", label: "Destaque (Impact)", css: 'Impact, "Arial Black", sans-serif' },
+  { id: "sans", label: "Padrão (Inter / Segoe)", css: '"Inter", "Segoe UI", "Ubuntu", "Noto Sans", system-ui, sans-serif' },
+  { id: "rounded", label: "Arredondada (Trebuchet)", css: '"Trebuchet MS", "Ubuntu", "DejaVu Sans", sans-serif' },
+  { id: "clean", label: "Clean (Calibri / Carlito)", css: 'Calibri, Carlito, "Liberation Sans", "Segoe UI", sans-serif' },
+  { id: "humanist", label: "Humanista (Verdana)", css: 'Verdana, "DejaVu Sans", Geneva, sans-serif' },
+  { id: "compact", label: "Compacta (Tahoma)", css: 'Tahoma, "Liberation Sans", Geneva, sans-serif' },
+  { id: "geometric", label: "Geométrica (Century)", css: '"Century Gothic", "URW Gothic", Futura, sans-serif' },
+  { id: "serif", label: "Clássica (Georgia)", css: 'Georgia, "Liberation Serif", "Times New Roman", serif' },
+  { id: "editorial", label: "Editorial (Cambria)", css: 'Cambria, Caladea, Georgia, serif' },
+  { id: "elegant", label: "Elegante (Palatino)", css: '"Palatino Linotype", "Book Antiqua", "URW Bookman", serif' },
+  { id: "times", label: "Tradicional (Times)", css: '"Times New Roman", "Liberation Serif", Times, serif' },
+  { id: "mono", label: "Código (Consolas / Mono)", css: '"Cascadia Code", Consolas, "JetBrains Mono", "DejaVu Sans Mono", monospace' },
+  { id: "courier", label: "Técnica (Courier)", css: '"Courier New", "Liberation Mono", Courier, monospace' },
+  { id: "lucida", label: "Terminal (Lucida)", css: '"Lucida Console", "Ubuntu Mono", Monaco, monospace' },
+  { id: "script", label: "Manuscrita (Script)", css: '"Segoe Script", "Comic Sans MS", "URW Chancery L", cursive' },
+  { id: "impact", label: "Destaque (Impact)", css: 'Impact, "Arial Black", "Liberation Sans", sans-serif' },
 ];
 
 const COLORS: { id: NoteColor; hex: string }[] = [

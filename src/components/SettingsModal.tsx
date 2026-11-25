@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import {
   AlertTriangle,
-  Download,
   Eye,
   EyeOff,
   KeyRound,
@@ -61,24 +60,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setUpdateInfo(res);
       if (!res.update_available) {
         setSuccess(`LockPad já está na versão mais recente (v${res.current_version}).`);
+      } else if (res.download_url) {
+        setSuccess(`Nova versão v${res.latest_version} encontrada! Baixando e instalando...`);
+        setBusy(true);
+        const msg = await api.installGithubUpdate(res.download_url);
+        setSuccess(msg);
       }
     } catch (err) {
       setError(String(err));
     } finally {
       setCheckingUpdate(false);
-    }
-  };
-
-  const handleInstallUpdate = async () => {
-    if (!updateInfo?.download_url) return;
-    setError(null);
-    setBusy(true);
-    try {
-      const msg = await api.installGithubUpdate(updateInfo.download_url);
-      setSuccess(msg);
-    } catch (err) {
-      setError(String(err));
-      setBusy(false);
     }
   };
 
@@ -276,22 +267,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         <div className="setting-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <div className="setting-info">
-              <strong>Atualizações (GitHub)</strong>
-              <span>Busca novas versões em github.com/Gartuja/LockPad</span>
-            </div>
-            <button
-              type="button"
-              className="btn"
-              disabled={checkingUpdate || busy}
-              onClick={handleCheckUpdate}
-            >
-              <RefreshCw size={13} />
-              {checkingUpdate ? "Verificando..." : "Verificar Atualizações"}
-            </button>
-          </div>
-          {updateInfo && updateInfo.update_available && (
+          <button
+            type="button"
+            className="btn btn-primary"
+            style={{ width: "100%" }}
+            disabled={checkingUpdate || busy}
+            onClick={handleCheckUpdate}
+          >
+            <RefreshCw size={14} />
+            {checkingUpdate
+              ? "Buscando e instalando atualização..."
+              : "Buscar Atualizações"}
+          </button>
+          {updateInfo && updateInfo.update_available && !updateInfo.download_url && (
             <div
               style={{
                 display: "flex",
@@ -307,25 +295,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <span>
                 Nova versão disponível: <strong>v{updateInfo.latest_version}</strong>
               </span>
-              {updateInfo.download_url ? (
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  disabled={busy}
-                  onClick={handleInstallUpdate}
-                >
-                  <Download size={13} /> Baixar e Atualizar
-                </button>
-              ) : (
-                <a
-                  href={updateInfo.release_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{ color: "var(--accent)", fontWeight: 600 }}
-                >
-                  Abrir Release
-                </a>
-              )}
+              <a
+                href={updateInfo.release_url}
+                target="_blank"
+                rel="noreferrer"
+                style={{ color: "var(--accent)", fontWeight: 600 }}
+              >
+                Abrir Release
+              </a>
             </div>
           )}
         </div>

@@ -1,6 +1,6 @@
 # LockPad
 
-**LockPad** is a fast, lightweight Windows desktop sticky notes application with a **zero-knowledge encrypted vault** hidden behind a discreet passphrase trigger. Built with **React + TypeScript + Tauri v2 (Rust)**, it looks and behaves like a clean glassmorphic sticky-notes app while protecting private notes, images, videos, and entire folder trees with modern authenticated cryptography.
+**LockPad** is a fast, cross-platform (**Windows & Linux**) desktop sticky notes application with a **zero-knowledge encrypted vault** hidden behind a discreet passphrase trigger. Built with **React + TypeScript + Tauri v2 (Rust)**, it looks and behaves like a clean glassmorphic sticky-notes app while protecting private notes, images, videos, and entire folder trees with modern authenticated cryptography.
 
 ---
 
@@ -11,14 +11,14 @@
 - **Rich Notes & Checklists**: Write formatted notes (`Bold`, `Italic`, `Strikethrough`, `Underline`) or convert any note into an interactive To-Do checklist.
 - **Full Per-Note Customization**:
   - **10 Color Themes**: Full-card color tinting with matching accent strips across both Dark and Light modes.
-  - **15 Font Styles**: Visual font selector rendered in each typeface (`Inter/Segoe`, `Trebuchet`, `Calibri`, `Verdana`, `Tahoma`, `Century Gothic`, `Georgia`, `Cambria`, `Palatino`, `Times New Roman`, `Consolas`, `Courier New`, `Lucida Console`, `Segoe Script`, `Impact`).
-  - **Adjustable Text Size**: Per-note font sizing from `11px` to `26px` (`A-` / `A+`).
+  - **15 Font Styles**: Visual font selector rendered in each typeface with Windows & Linux font fallbacks.
+  - **Adjustable Text Size**: Per-note font sizing from `11px` to `26px` (`AA`).
   - **Custom Image & GIF Backgrounds**: Personalize any note with `JPEG`, `PNG`, or animated `GIF` backgrounds with automatic readability scrims.
 - **Floating Desktop Notes & Always-On-Top Overlay**:
-  - Drag any note outside the main LockPad window (or click detach) to float it anywhere on your desktop with real-time sync.
-  - Pin any detached note as an **Always-On-Top Overlay** — protected against Windows **"Show Desktop" (`Win+D`)** so pinned notes remain visible.
+  - Drag any note outside the main LockPad window (or click detach) to float it independently on your desktop with real-time sync.
+  - Pin any note as an **Always-On-Top Overlay** — protected against Windows **"Show Desktop" (`Win+D`)** so pinned notes remain visible.
 - **System Tray & Safe Exit**:
-  - Minimize sends LockPad to the Windows System Tray (notification area).
+  - Minimize sends LockPad to the system tray (notification area).
   - Closing the main window prompts for confirmation before exiting and locks the vault.
 
 ### Stealth Encrypted Vault & Security Architecture
@@ -38,26 +38,38 @@
 - **Screen-Capture Protection**:
   - Automatically applies Windows `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` while the vault is unlocked to block screenshots and screen recorders.
 - **Protected Deletion & Uninstall Gate**:
-  - Wiping the vault or uninstalling via the Windows NSIS uninstaller (`--uninstall-gate`) requires entering the exact master passphrase plus explicit confirmation (`APAGAR TUDO`), followed by multi-pass random/zero file shredding.
-- **GitHub Self-Updater**:
-  - Built-in update checker in **Settings** querying `https://api.github.com/repos/Gartuja/LockPad/releases/latest` with strict HTTPS origin verification and automatic Windows binary replacement.
+  - Wiping the vault or uninstalling (`--uninstall-gate`) requires entering the exact master passphrase plus explicit confirmation (`APAGAR TUDO`), followed by multi-pass random/zero file shredding.
+- **One-Click GitHub Auto-Updater**:
+  - Click **Buscar Atualizações** inside **Settings** to check `https://api.github.com/repos/Gartuja/LockPad/releases/latest`, download the latest version for Windows or Linux, remove the previous binary, and launch the updated version automatically.
 
 ---
 
-## Tech Stack
+## Installation
 
-- **Frontend**: React 19, TypeScript, Vite, Lucide Icons
-- **Backend**: Rust, Tauri v2 (`tray-icon`, `tauri-plugin-dialog`)
-- **Cryptography**: `argon2`, `chacha20poly1305`, `zeroize`, `rand`
+### Windows
+- **Installer**: Run `LockPad_1.6.0_x64-setup.exe` (NSIS installer with protected uninstaller hook).
+- **Portable**: Extract `LockPad-v1.6.0-win64.zip` and run `LockPad.exe`.
+
+### Linux
+- **Package / AppImage**: Install the `.deb` (`sudo dpkg -i lockpad_*.deb`) or run the `.AppImage` from GitHub Releases.
+- **Simple Installer Script** (after building or extracting binary):
+  ```bash
+  chmod +x installers/linux/install.sh
+  ./installers/linux/install.sh
+  ```
 
 ---
 
-## Building from Source (Windows)
+## Building from Source
 
 ### Prerequisites
-- Node.js 20+
-- Rust toolchain (`stable-x86_64-pc-windows-gnu` or `msvc`)
-- Microsoft Edge WebView2 Runtime
+- **Common**: Node.js 20+, Rust toolchain (`stable`)
+- **Windows**: Microsoft Edge WebView2 Runtime
+- **Linux (Debian / Ubuntu)**:
+  ```bash
+  sudo apt-get update
+  sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+  ```
 
 ### Commands
 ```bash
@@ -70,6 +82,6 @@ cargo test --manifest-path src-tauri/Cargo.toml
 # Run in development mode
 npm run tauri dev
 
-# Build release executable
-npx tauri build --no-bundle
+# Build release + native installers (NSIS on Windows; AppImage/deb on Linux)
+npx tauri build
 ```

@@ -61,6 +61,61 @@ fn is_allowed_github_url(url: &str) -> bool {
         || url.starts_with("https://release-assets.githubusercontent.com/")
 }
 
+fn pick_platform_asset(assets: &[GithubAsset]) -> Option<&GithubAsset> {
+    #[cfg(target_os = "windows")]
+    {
+        // Prefer portable win64 zip or standalone exe (works cleanly for in-place self-replace)
+        assets
+            .iter()
+            .find(|a| {
+                let n = a.name.to_lowercase();
+                n.ends_with(".zip")
+                    && (n.contains("win") || n.contains("x64"))
+                    && is_allowed_github_url(&a.browser_download_url)
+            })
+            .or_else(|| {
+                assets.iter().find(|a| {
+                    let n = a.name.to_lowercase();
+                    n.ends_with(".exe")
+                        && !n.contains("setup")
+                        && is_allowed_github_url(&a.browser_download_url)
+                })
+            })
+            .or_else(|| {
+                assets.iter().find(|a| {
+                    let n = a.name.to_lowercase();
+                    (n.ends_with(".zip") || n.ends_with(".exe"))
+                        && is_allowed_github_url(&a.browser_download_url)
+                })
+            })
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        assets
+            .iter()
+            .find(|a| {
+                let n = a.name.to_lowercase();
+                n.ends_with(".appimage") && is_allowed_github_url(&a.browser_download_url)
+            })
+            .or_else(|| {
+                assets.iter().find(|a| {
+                    let n = a.name.to_lowercase();
+                    n.ends_with(".zip")
+                        && n.contains("linux")
+                        && is_allowed_github_url(&a.browser_download_url)
+                })
+            })
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    {
+        assets
+            .iter()
+            .find(|a| is_allowed_github_url(&a.browser_download_url))
+    }
+}
+
 pub fn check_github_update(current_version: &str) -> Result<UpdateCheckResult, String> {
     let client = reqwest::blocking::Client::builder()
         .user_agent(format!("LockPad/{current_version}"))
@@ -79,14 +134,7 @@ pub fn check_github_update(current_version: &str) -> Result<UpdateCheckResult, S
             .json()
             .map_err(|e| format!("Resposta inválida do GitHub: {e}"))?;
         let latest = rel.tag_name.trim_start_matches(['v', 'V']).to_string();
-        let chosen_asset = rel
-            .assets
-            .iter()
-            .find(|a| {
-                let n = a.name.to_lowercase();
-                (n.ends_with(".zip") || n.ends_with(".exe"))
-                    && is_allowed_github_url(&a.browser_download_url)
-            });
+        let chosen_asset = pick_platform_asset(&rel.assets);
 
         return Ok(UpdateCheckResult {
             current_version: current_version.to_string(),
@@ -99,7 +147,6 @@ pub fn check_github_update(current_version: &str) -> Result<UpdateCheckResult, S
         });
     }
 
-    // Fallback: check tags if no formal GitHub Release has been published yet
     let tags_api = format!("https://api.github.com/repos/{GITHUB_REPO}/tags");
     let tags_resp = client
         .get(&tags_api)
@@ -172,44 +219,51 @@ pub fn download_and_install_update(
 
     let update_dir = std::env::temp_dir().join(format!("lockpad_update_{}", uuid::Uuid::new_v4()));
     fs::create_dir_all(&update_dir).map_err(|e| format!("Erro ao criar pasta temp: {e}"))?;
-    let staged_exe: PathBuf = update_dir.join("LockPad_new.exe");
-
-    if download_url.to_lowercase().ends_with(".zip") {
-        let cursor = std::io::Cursor::new(&payload);
-        let mut archive =
-            zip::ZipArchive::new(cursor).map_err(|e| format!("ZIP inválido: {e}"))?;
-        let mut found = false;
-        for i in 0..archive.len() {
-            let mut entry = archive
-                .by_index(i)
-                .map_err(|e| format!("Erro ao ler item do ZIP: {e}"))?;
-            let name = entry.name().to_lowercase();
-            if name.ends_with(".exe") && !name.contains('/') && !name.contains('\\') {
-                let mut out =
-                    File::create(&staged_exe).map_err(|e| format!("Erro ao gravar exe: {e}"))?;
-                std::io::copy(&mut entry, &mut out)
-                    .map_err(|e| format!("Erro ao extrair exe: {e}"))?;
-                found = true;
-                break;
-            }
-        }
-        if !found {
-            return Err("Nenhum executável encontrado dentro do pacote ZIP.".to_string());
-        }
-    } else if download_url.to_lowercase().ends_with(".exe") {
-        fs::write(&staged_exe, &payload).map_err(|e| format!("Erro ao gravar exe: {e}"))?;
-    } else {
-        return Err("Formato de pacote de atualização não suportado.".to_string());
-    }
 
     #[cfg(target_os = "windows")]
     {
+        let staged_exe: PathBuf = update_dir.join("LockPad_new.exe");
+        let lower_url = download_url.to_lowercase();
+
+        if lower_url.ends_with(".zip") {
+            let cursor = std::io::Cursor::new(&payload);
+            let mut archive =
+                zip::ZipArchive::new(cursor).map_err(|e| format!("ZIP inválido: {e}"))?;
+            let mut found = false;
+            for i in 0..archive.len() {
+                let mut entry = archive
+                    .by_index(i)
+                    .map_err(|e| format!("Erro ao ler item do ZIP: {e}"))?;
+                let name = entry.name().to_lowercase();
+                if name.ends_with(".exe")
+                    && !name.contains("setup")
+                    && !name.contains('/')
+                    && !name.contains('\\')
+                {
+                    let mut out =
+                        File::create(&staged_exe).map_err(|e| format!("Erro ao gravar exe: {e}"))?;
+                    std::io::copy(&mut entry, &mut out)
+                        .map_err(|e| format!("Erro ao extrair exe: {e}"))?;
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                return Err("Nenhum executável encontrado dentro do pacote ZIP.".to_string());
+            }
+        } else if lower_url.ends_with(".exe") {
+            fs::write(&staged_exe, &payload).map_err(|e| format!("Erro ao gravar exe: {e}"))?;
+        } else {
+            return Err("Formato de pacote de atualização não suportado.".to_string());
+        }
+
         let pid = std::process::id();
         let bat_path = update_dir.join("apply_update.cmd");
         let target_str = current_exe.to_string_lossy();
         let staged_str = staged_exe.to_string_lossy();
         let dir_str = update_dir.to_string_lossy();
 
+        // Waits for old process to exit, deletes old executable, moves new version in, restarts, and cleans temp dir.
         let script = format!(
             "@echo off\r\n\
              :waitloop\r\n\
@@ -218,12 +272,13 @@ pub fn download_and_install_update(
                timeout /t 1 /nobreak >NUL\r\n\
                goto waitloop\r\n\
              )\r\n\
-             copy /Y \"{staged_str}\" \"{target_str}\" >NUL\r\n\
+             del /F /Q \"{target_str}\" >NUL 2>&1\r\n\
+             move /Y \"{staged_str}\" \"{target_str}\" >NUL\r\n\
              start \"\" \"{target_str}\"\r\n\
              rmdir /S /Q \"{dir_str}\" 2>NUL\r\n"
         );
-        let mut f =
-            File::create(&bat_path).map_err(|e| format!("Erro ao criar script de atualização: {e}"))?;
+        let mut f = File::create(&bat_path)
+            .map_err(|e| format!("Erro ao criar script de atualização: {e}"))?;
         f.write_all(script.as_bytes())
             .map_err(|e| format!("Erro ao gravar script: {e}"))?;
 
@@ -233,5 +288,72 @@ pub fn download_and_install_update(
             .map_err(|e| format!("Falha ao iniciar processo de atualização: {e}"))?;
     }
 
-    Ok("Atualização baixada. Reiniciando LockPad...".to_string())
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let target_bin = std::env::var_os("APPIMAGE")
+            .map(PathBuf::from)
+            .unwrap_or(current_exe);
+        let staged_bin = update_dir.join("lockpad_new");
+        let lower_url = download_url.to_lowercase();
+
+        if lower_url.ends_with(".zip") {
+            let cursor = std::io::Cursor::new(&payload);
+            let mut archive =
+                zip::ZipArchive::new(cursor).map_err(|e| format!("ZIP inválido: {e}"))?;
+            let mut found = false;
+            for i in 0..archive.len() {
+                let mut entry = archive
+                    .by_index(i)
+                    .map_err(|e| format!("Erro ao ler item do ZIP: {e}"))?;
+                let name = entry.name().to_lowercase();
+                if (name.ends_with("lockpad") || name.ends_with(".appimage"))
+                    && !name.contains('/')
+                {
+                    let mut out = File::create(&staged_bin)
+                        .map_err(|e| format!("Erro ao gravar binário: {e}"))?;
+                    std::io::copy(&mut entry, &mut out)
+                        .map_err(|e| format!("Erro ao extrair binário: {e}"))?;
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                return Err("Nenhum binário Linux encontrado dentro do pacote ZIP.".to_string());
+            }
+        } else {
+            fs::write(&staged_bin, &payload).map_err(|e| format!("Erro ao gravar binário: {e}"))?;
+        }
+
+        fs::set_permissions(&staged_bin, fs::Permissions::from_mode(0o755))
+            .map_err(|e| format!("Erro ao aplicar permissão executável: {e}"))?;
+
+        let pid = std::process::id();
+        let sh_path = update_dir.join("apply_update.sh");
+        let target_str = target_bin.to_string_lossy();
+        let staged_str = staged_bin.to_string_lossy();
+        let dir_str = update_dir.to_string_lossy();
+
+        let script = format!(
+            "#!/bin/sh\n\
+             while kill -0 {pid} 2>/dev/null; do sleep 0.3; done\n\
+             rm -f '{target_str}'\n\
+             mv -f '{staged_str}' '{target_str}'\n\
+             chmod +x '{target_str}'\n\
+             nohup '{target_str}' >/dev/null 2>&1 &\n\
+             rm -rf '{dir_str}'\n"
+        );
+        fs::write(&sh_path, script.as_bytes())
+            .map_err(|e| format!("Erro ao criar script de atualização: {e}"))?;
+        fs::set_permissions(&sh_path, fs::Permissions::from_mode(0o755))
+            .map_err(|e| format!("Erro ao dar permissão ao script: {e}"))?;
+
+        std::process::Command::new("sh")
+            .arg(&sh_path)
+            .spawn()
+            .map_err(|e| format!("Falha ao iniciar processo de atualização: {e}"))?;
+    }
+
+    Ok("Atualização baixada. Removendo versão antiga e reiniciando LockPad...".to_string())
 }

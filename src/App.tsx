@@ -10,7 +10,6 @@ import {
   Lock,
   Minus,
   Moon,
-  Pin,
   Plus,
   Search,
   Settings,
@@ -90,7 +89,7 @@ export const App: React.FC = () => {
   const [quickUnlockError, setQuickUnlockError] = useState<string | null>(null);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [detachedIds, setDetachedIds] = useState<string[]>([]);
-  const [appVersion, setAppVersion] = useState("1.5.0");
+  const [appVersion, setAppVersion] = useState("1.6.0");
   const [banner, setBanner] = useState<{ text: string; isError?: boolean } | null>(null);
 
   const stealthInFlightRef = useRef(false);
@@ -464,18 +463,6 @@ export const App: React.FC = () => {
         </div>
 
         <div className="titlebar-actions">
-          <button
-            className={`icon-btn ${preferences.always_on_top ? "active" : ""}`}
-            title="Manter sempre visível"
-            onClick={() =>
-              handlePreferencesChange({
-                ...preferences,
-                always_on_top: !preferences.always_on_top,
-              })
-            }
-          >
-            <Pin size={14} />
-          </button>
           <button
             className="icon-btn"
             title={preferences.theme === "dark" ? "Modo claro" : "Modo escuro"}
