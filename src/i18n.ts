@@ -162,7 +162,7 @@ const pt = {
   onboardingCopyKey: "Copiar Chave",
   onboardingCopied: "Chave copiada!",
   onboardingConfirmCheck:
-    "Confirmo que salvei minha chave de recuperação de 24 caracteres em outro local seguro e entendi as regras de segurança.",
+    "Confirmo que salvei minha chave de recuperação em outro local",
   onboardingEnterBtn: "Confirmar e Começar a Usar",
 };
 
@@ -319,7 +319,7 @@ const en: I18nStrings = {
   onboardingCopyKey: "Copy Key",
   onboardingCopied: "Key copied!",
   onboardingConfirmCheck:
-    "I confirm I saved my 24-character recovery key in another safe location and understood the security rules.",
+    "I confirm I saved my recovery key in another location",
   onboardingEnterBtn: "Confirm and Start Using LockPad",
 };
 
@@ -474,7 +474,7 @@ const es: I18nStrings = {
   onboardingCopyKey: "Copiar Clave",
   onboardingCopied: "¡Clave copiada!",
   onboardingConfirmCheck:
-    "Confirmo que guardé mi clave de recuperación de 24 caracteres en otro lugar seguro y entendí las reglas de seguridad.",
+    "Confirmo que guardé mi clave de recuperación en otro lugar",
   onboardingEnterBtn: "Confirmar y Empezar a Usar",
 };
 

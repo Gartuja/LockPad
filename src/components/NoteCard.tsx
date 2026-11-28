@@ -42,7 +42,7 @@ const FONT_OPTIONS: { id: string; label: string; css: string }[] = [
   { id: "editorial", label: "Editorial (Cambria)", css: 'Cambria, Caladea, Georgia, serif' },
   { id: "elegant", label: "Elegante (Palatino)", css: '"Palatino Linotype", "Book Antiqua", "URW Bookman", serif' },
   { id: "times", label: "Tradicional (Times)", css: '"Times New Roman", "Liberation Serif", Times, serif' },
-  { id: "mono", label: "Código (Consolas / Mono)", css: '"Cascadia Code", Consolas, "JetBrains Mono", "DejaVu Sans Mono", monospace' },
+  { id: "mono", label: "Código (Consolas)", css: '"Cascadia Code", Consolas, "JetBrains Mono", "DejaVu Sans Mono", monospace' },
   { id: "courier", label: "Técnica (Courier)", css: '"Courier New", "Liberation Mono", Courier, monospace' },
   { id: "lucida", label: "Terminal (Lucida)", css: '"Lucida Console", "Ubuntu Mono", Monaco, monospace' },
   { id: "script", label: "Manuscrita (Script)", css: '"Segoe Script", "Comic Sans MS", "URW Chancery L", cursive' },
@@ -879,6 +879,10 @@ export const NoteCard: React.FC<NoteCardProps> = ({
                         className={`mini-btn ${(note.font_family ?? "sans") === f.id ? "active" : ""}`}
                         style={{
                           justifyContent: "flex-start",
+                          textAlign: "left",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
                           fontFamily: f.css,
                           fontSize: 12.5,
                           height: 28,
@@ -912,7 +916,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
                 setFontSizeOpen(false);
                 if (!fontFamilyOpen && fontBtnRef.current) {
                   const rect = fontBtnRef.current.getBoundingClientRect();
-                  const menuW = 205;
+                  const menuW = 224;
                   const menuH = 240;
                   const left = Math.max(
                     8,

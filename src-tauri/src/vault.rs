@@ -43,6 +43,13 @@ impl VaultManager {
     pub fn new(data_dir: PathBuf) -> Result<Self, String> {
         fs::create_dir_all(&data_dir).map_err(|e| format!("Failed to create data dir: {e}"))?;
         let guard_handle = Self::try_open_guard(&data_dir);
+        if Self::public_store_path(&data_dir).exists() {
+            if let Ok(store) = Self::load_public_store(&data_dir) {
+                if store.preferences.onboarding_completed {
+                    apply_app_data_protection(&data_dir);
+                }
+            }
+        }
         if Self::meta_path(&data_dir).exists() {
             apply_vault_fs_protection(&Self::vault_dir(&data_dir), true);
         }
@@ -115,12 +122,12 @@ impl VaultManager {
     pub fn load_public_store(data_dir: &Path) -> Result<PublicStore, String> {
         let path = Self::public_store_path(data_dir);
         if !path.exists() {
+            let (title, content) = default_public_welcome("pt");
             let default_store = PublicStore {
                 notes: vec![StickyNote {
                     id: Uuid::new_v4().to_string(),
-                    title: "Bem-vindo ao LockPad".to_string(),
-                    content: "Suas anotações rápidas ficam aqui.\n\nDica: configure sua frase-chave nas Configurações para desbloquear seu cofre criptografado digitando a frase direto em uma nota."
-                        .to_string(),
+                    title,
+                    content,
                     color: "indigo".to_string(),
                     background_image: None,
                     font_size: None,
@@ -147,7 +154,22 @@ impl VaultManager {
     pub fn save_public_store(data_dir: &Path, store: &PublicStore) -> Result<(), String> {
         let bytes =
             serde_json::to_vec_pretty(store).map_err(|e| format!("Serialize error: {e}"))?;
-        atomic_write(&Self::public_store_path(data_dir), &bytes)
+        let path = Self::public_store_path(data_dir);
+        if path.exists() {
+            // Write in-place so NTFS deny-(DE) delete protection on public_notes.json never blocks saves
+            let mut f = OpenOptions::new()
+                .write(true)
+                .truncate(true)
+                .open(&path)
+                .map_err(|e| format!("Open public store failed: {e}"))?;
+            f.write_all(&bytes)
+                .map_err(|e| format!("Write public store failed: {e}"))?;
+            f.sync_all()
+                .map_err(|e| format!("Sync public store failed: {e}"))?;
+            Ok(())
+        } else {
+            atomic_write(&path, &bytes)
+        }
     }
 
     fn load_meta(data_dir: &Path) -> Result<Option<VaultMeta>, String> {
@@ -235,15 +257,29 @@ impl VaultManager {
         let rec_salt = random_bytes::<32>();
         let rec_pub = recovery_pubkey_from_key(recovery_key, &rec_salt)?;
 
-        store.preferences.onboarding_completed = true;
-        store.preferences.language = match language {
+        let lang_norm = match language {
             "en" => "en".to_string(),
             "es" => "es".to_string(),
             _ => "pt".to_string(),
         };
+        store.preferences.onboarding_completed = true;
+        store.preferences.language = lang_norm.clone();
         store.preferences.recovery_salt = Some(B64.encode(rec_salt));
         store.preferences.recovery_pubkey = Some(B64.encode(rec_pub));
+
+        // Translate the initial untouched welcome note to the language selected at onboarding
+        if store.notes.len() == 1 {
+            let t = store.notes[0].title.as_str();
+            if t == "Bem-vindo ao LockPad" || t == "Welcome to LockPad" || t == "Bienvenido a LockPad" {
+                let (title, content) = default_public_welcome(&lang_norm);
+                store.notes[0].title = title;
+                store.notes[0].content = content;
+                store.notes[0].updated_at = Utc::now().to_rfc3339();
+            }
+        }
+
         Self::save_public_store(&guard.data_dir, &store)?;
+        apply_app_data_protection(&guard.data_dir);
         Ok(store)
     }
 
@@ -312,12 +348,17 @@ impl VaultManager {
             recovery_wrapped_dek,
         };
 
+        let vault_lang = pub_store
+            .as_ref()
+            .map(|s| s.preferences.language.as_str())
+            .unwrap_or("pt");
+        let (v_title, v_content) = default_vault_welcome(vault_lang);
+
         let initial_manifest = VaultManifest {
             notes: vec![StickyNote {
                 id: Uuid::new_v4().to_string(),
-                title: "Cofre Seguro Ativado".to_string(),
-                content: "Este espaço é protegido com Argon2id + XChaCha20-Poly1305.\n\nVocê pode escrever notas privadas, arrastar imagens, vídeos e pastas inteiras para cá. Tudo é criptografado localmente antes de tocar o disco."
-                    .to_string(),
+                title: v_title,
+                content: v_content,
                 color: "emerald".to_string(),
                 background_image: None,
                 font_size: None,
@@ -1482,6 +1523,77 @@ impl VaultManager {
     }
 }
 
+fn default_public_welcome(lang: &str) -> (String, String) {
+    match lang {
+        "en" => (
+            "Welcome to LockPad".to_string(),
+            "Your quick sticky notes stay here.\n\nTip: set your secret passphrase in Settings to unlock your encrypted vault by typing the phrase directly inside any note."
+                .to_string(),
+        ),
+        "es" => (
+            "Bienvenido a LockPad".to_string(),
+            "Tus notas rápidas quedan aquí.\n\nConsejo: configura tu frase clave en Configuración para desbloquear tu bóveda cifrada escribiéndola directamente en una nota."
+                .to_string(),
+        ),
+        _ => (
+            "Bem-vindo ao LockPad".to_string(),
+            "Suas anotações rápidas ficam aqui.\n\nDica: configure sua frase-chave nas Configurações para desbloquear seu cofre criptografado digitando a frase direto em uma nota."
+                .to_string(),
+        ),
+    }
+}
+
+fn default_vault_welcome(lang: &str) -> (String, String) {
+    match lang {
+        "en" => (
+            "Secure Vault Activated".to_string(),
+            "This space is protected with Argon2id + XChaCha20-Poly1305.\n\nYou can write private notes and attach or drag images, videos, audio, and entire folders here. Everything is encrypted locally before touching disk."
+                .to_string(),
+        ),
+        "es" => (
+            "Bóveda Segura Activada".to_string(),
+            "Este espacio está protegido con Argon2id + XChaCha20-Poly1305.\n\nPuedes escribir notas privadas y adjuntar o arrastrar imágenes, videos, audios y carpetas enteras aquí. Todo se cifra localmente antes de tocar el disco."
+                .to_string(),
+        ),
+        _ => (
+            "Cofre Seguro Ativado".to_string(),
+            "Este espaço é protegido com Argon2id + XChaCha20-Poly1305.\n\nVocê pode escrever notas privadas, anexar ou arrastar imagens, vídeos, áudios e pastas inteiras para cá. Tudo é criptografado localmente antes de tocar o disco."
+                .to_string(),
+        ),
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub fn apply_app_data_protection(data_dir: &Path) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+    if data_dir.exists() {
+        let _ = std::process::Command::new("icacls")
+            .args([
+                &data_dir.to_string_lossy().to_string(),
+                "/deny",
+                "*S-1-1-0:(DE,DC)",
+            ])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+    }
+    let pub_path = VaultManager::public_store_path(data_dir);
+    if pub_path.exists() {
+        let _ = std::process::Command::new("icacls")
+            .args([
+                &pub_path.to_string_lossy().to_string(),
+                "/deny",
+                "*S-1-1-0:(DE)",
+            ])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn apply_app_data_protection(_data_dir: &Path) {}
+
 #[cfg(target_os = "windows")]
 pub fn apply_vault_fs_protection(vault_dir: &Path, protect_exe: bool) {
     use std::os::windows::ffi::OsStrExt;
@@ -1490,6 +1602,14 @@ pub fn apply_vault_fs_protection(vault_dir: &Path, protect_exe: bool) {
         SetFileAttributesW, FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_SYSTEM,
     };
     const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+    if !vault_dir.as_os_str().is_empty() {
+        if let Some(data_dir) = vault_dir.parent() {
+            if data_dir.exists() {
+                apply_app_data_protection(data_dir);
+            }
+        }
+    }
 
     if vault_dir.exists() {
         let wide: Vec<u16> = vault_dir
@@ -1533,7 +1653,7 @@ pub fn remove_vault_fs_protection(vault_dir: &Path, unprotect_exe: bool) {
     use windows_sys::Win32::Storage::FileSystem::{SetFileAttributesW, FILE_ATTRIBUTE_NORMAL};
     const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-    if vault_dir.exists() {
+    if !vault_dir.as_os_str().is_empty() && vault_dir.exists() {
         let _ = std::process::Command::new("icacls")
             .args([
                 &vault_dir.to_string_lossy().to_string(),
@@ -1549,6 +1669,32 @@ pub fn remove_vault_fs_protection(vault_dir: &Path, unprotect_exe: bool) {
             .collect();
         unsafe {
             SetFileAttributesW(wide.as_ptr(), FILE_ATTRIBUTE_NORMAL);
+        }
+    }
+
+    if !vault_dir.as_os_str().is_empty() {
+        if let Some(data_dir) = vault_dir.parent() {
+            if !data_dir.as_os_str().is_empty() && data_dir.exists() {
+                let pub_path = VaultManager::public_store_path(data_dir);
+                if pub_path.exists() {
+                    let _ = std::process::Command::new("icacls")
+                        .args([
+                            &pub_path.to_string_lossy().to_string(),
+                            "/remove:d",
+                            "*S-1-1-0",
+                        ])
+                        .creation_flags(CREATE_NO_WINDOW)
+                        .output();
+                }
+                let _ = std::process::Command::new("icacls")
+                    .args([
+                        &data_dir.to_string_lossy().to_string(),
+                        "/remove:d",
+                        "*S-1-1-0",
+                    ])
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .output();
+            }
         }
     }
 
@@ -1695,12 +1841,24 @@ mod tests {
             .unwrap();
         assert!(!vm.status().unwrap().exists);
 
-        // Test onboarding recovery key safeguard flow
+        // Test onboarding recovery key safeguard flow + localized welcome notes + AppData protection
         let rec_key = VaultManager::generate_recovery_key();
-        let store = vm.complete_onboarding(&rec_key, "en").unwrap();
+        let mut store = vm.complete_onboarding(&rec_key, "en").unwrap();
         assert!(store.preferences.onboarding_completed);
         assert!(store.preferences.recovery_pubkey.is_some());
+        assert_eq!(store.notes[0].title, "Welcome to LockPad");
+
+        // Saving public notes in-place continues working while Windows NTFS (DE) blocks external delete
+        store.notes[0].title = "Updated".to_string();
+        VaultManager::save_public_store(&dir, &store).unwrap();
+
         vm.setup_vault("senha-esquecida").unwrap();
+        assert_eq!(vm.get_manifest().unwrap().notes[0].title, "Secure Vault Activated");
+        #[cfg(target_os = "windows")]
+        {
+            assert!(fs::remove_file(VaultManager::public_store_path(&dir)).is_err());
+            assert!(fs::remove_dir_all(&dir).is_err());
+        }
         vm.lock();
         // Unlock & destroy using ONLY the 24-char recovery key
         assert!(vm.try_unlock(&rec_key).unwrap());
@@ -1708,6 +1866,6 @@ mod tests {
         vm.verify_and_destroy_vault(&rec_key, true, true).unwrap();
         assert!(!vm.status().unwrap().exists);
 
-        let _ = fs::remove_dir_all(&dir);
+        fs::remove_dir_all(&dir).unwrap();
     }
 }

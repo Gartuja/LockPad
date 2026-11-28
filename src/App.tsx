@@ -97,7 +97,7 @@ export const App: React.FC = () => {
   const [quickUnlockError, setQuickUnlockError] = useState<string | null>(null);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [detachedIds, setDetachedIds] = useState<string[]>([]);
-  const [appVersion, setAppVersion] = useState("2.0.1");
+  const [appVersion, setAppVersion] = useState("2.0.2");
   const [storeLoaded, setStoreLoaded] = useState(false);
   const [banner, setBanner] = useState<{ text: string; isError?: boolean } | null>(null);
   const t = getStrings(preferences.language);
