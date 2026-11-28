@@ -148,7 +148,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     e.preventDefault();
     setError(null);
     setSuccess(null);
-    if (!wipeChecked || wipeConfirmText.trim().toUpperCase() !== "APAGAR TUDO") {
+    if (!wipeChecked || wipeConfirmText.trim().toUpperCase() !== t.confirmDestroyPhrase) {
       setError(t.wipeNeedConfirm);
       return;
     }
@@ -477,7 +477,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 disabled={
                   busy ||
                   !wipeChecked ||
-                  wipeConfirmText.trim().toUpperCase() !== "APAGAR TUDO" ||
+                  wipeConfirmText.trim().toUpperCase() !== t.confirmDestroyPhrase ||
                   !wipePass
                 }
               >

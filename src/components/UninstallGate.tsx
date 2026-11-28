@@ -26,7 +26,7 @@ export const UninstallGate: React.FC = () => {
   const handleConfirmUninstall = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!confirmed || confirmText.trim().toUpperCase() !== "APAGAR TUDO") {
+    if (!confirmed || confirmText.trim().toUpperCase() !== t.confirmDestroyPhrase) {
       setError(t.wipeNeedConfirm);
       return;
     }
@@ -109,7 +109,7 @@ export const UninstallGate: React.FC = () => {
                 busy ||
                 !passphrase ||
                 !confirmed ||
-                confirmText.trim().toUpperCase() !== "APAGAR TUDO"
+                confirmText.trim().toUpperCase() !== t.confirmDestroyPhrase
               }
             >
               <Trash2 size={14} /> {t.uninstallConfirmBtn}

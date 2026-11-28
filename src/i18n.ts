@@ -109,12 +109,13 @@ const pt = {
   dangerZoneTitle: "Exclusão Protegida do Cofre",
   dangerZoneDesc:
     "O cofre, a pasta criptografada e o executável portátil são protegidos contra exclusão. Digite sua frase-chave (ou chave de 24 caracteres) para remover a trava e apagar os dados.",
-  confirmDestroyPlaceholder: 'Digite "APAGAR TUDO" para confirmar',
+  confirmDestroyPhrase: "DELETAR TODOS OS DADOS",
+  confirmDestroyPlaceholder: 'Digite "DELETAR TODOS OS DADOS" para confirmar',
   confirmDestroyCheck:
     "Confirmo que todas as notas secretas, imagens, vídeos e pastas serão apagados permanentemente.",
   alsoWipePublic: "Também apagar minhas notas normais (públicas)",
   destroyVaultBtn: "Destruir Cofre Permanentemente",
-  wipeNeedConfirm: 'Marque a confirmação e digite "APAGAR TUDO" exatamente.',
+  wipeNeedConfirm: 'Marque a confirmação e digite "DELETAR TODOS OS DADOS" exatamente.',
   vaultDestroyedMsg: "Cofre sobrescrito e apagado permanentemente.",
 
   // VaultFilesSection
@@ -269,12 +270,13 @@ const en: I18nStrings = {
   dangerZoneTitle: "Protected Vault Deletion",
   dangerZoneDesc:
     "The vault, encrypted folder, and portable executable are protected against deletion. Enter your passphrase (or 24-char recovery key) to unlock and destroy data.",
-  confirmDestroyPlaceholder: 'Type "APAGAR TUDO" to confirm',
+  confirmDestroyPhrase: "DELETE ALL DATA",
+  confirmDestroyPlaceholder: 'Type "DELETE ALL DATA" to confirm',
   confirmDestroyCheck:
     "I confirm all secret notes, images, videos, and folders will be permanently deleted.",
   alsoWipePublic: "Also erase my normal (public) notes",
   destroyVaultBtn: "Destroy Vault Permanently",
-  wipeNeedConfirm: 'Check the confirmation box and type "APAGAR TUDO" exactly.',
+  wipeNeedConfirm: 'Check the confirmation box and type "DELETE ALL DATA" exactly.',
   vaultDestroyedMsg: "Vault shredded and permanently deleted.",
 
   vaultFilesTitle: "Encrypted Files, Media & Folders",
@@ -424,12 +426,13 @@ const es: I18nStrings = {
   dangerZoneTitle: "Eliminación Protegida de Bóveda",
   dangerZoneDesc:
     "La bóveda, la carpeta cifrada y el ejecutable portátil están protegidos contra borrado. Ingresa tu frase clave (o clave de 24 caracteres) para desbloquear y destruir.",
-  confirmDestroyPlaceholder: 'Escribe "APAGAR TUDO" para confirmar',
+  confirmDestroyPhrase: "BORRAR TODOS LOS DATOS",
+  confirmDestroyPlaceholder: 'Escribe "BORRAR TODOS LOS DATOS" para confirmar',
   confirmDestroyCheck:
     "Confirmo que todas las notas secretas, imágenes, videos y carpetas se borrarán permanentemente.",
   alsoWipePublic: "También borrar mis notas normales (públicas)",
   destroyVaultBtn: "Destruir Bóveda Permanentemente",
-  wipeNeedConfirm: 'Marca la confirmación y escribe "APAGAR TUDO" exactamente.',
+  wipeNeedConfirm: 'Marca la confirmación y escribe "BORRAR TODOS LOS DATOS" exactamente.',
   vaultDestroyedMsg: "Bóveda sobrescrita y eliminada permanentemente.",
 
   vaultFilesTitle: "Archivos, Multimedia y Carpetas Cifrados",
